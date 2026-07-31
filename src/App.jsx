@@ -82,6 +82,37 @@ async function sbInsert(table, payload, token) {
   return data;
 }
 
+async function sbUpdate(table, query, payload, token) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || `Erro ao atualizar ${table}`);
+  return data;
+}
+
+async function sbUpdatePassword(novaSenha, token) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ password: novaSenha }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.msg || "Erro ao trocar senha");
+  return data;
+}
+
 // Chama a Edge Function segura (roda no servidor, valida admin/gestor lá,
 // e só ela toca na service_role key — o app nunca vê essa chave).
 async function cadastrarFuncionarioSeguro(payload, token) {
@@ -909,6 +940,75 @@ function CadastroFuncionario() {
   );
 }
 
+function TrocaSenhaObrigatoria({ onTrocada }) {
+  const { token, user } = useFleet();
+  const [senha, setSenha] = useState("");
+  const [confirmacao, setConfirmacao] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function trocar(e) {
+    e.preventDefault();
+    setError("");
+    if (senha.length < 6) {
+      setError("A nova senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (senha !== confirmacao) {
+      setError("As senhas não conferem.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await sbUpdatePassword(senha, token);
+      await sbUpdate("profiles", `id=eq.${user.id}`, { senha_temporaria: false }, token);
+      onTrocada();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: COLORS.bg, fontFamily: "'Inter', sans-serif",
+    }}>
+      <div style={{ width: 340, background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.gold, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Truck size={17} color="#0A0D11" />
+          </div>
+          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: COLORS.textPrimary }}>FrotaTech</span>
+        </div>
+
+        <div style={{ fontSize: 14, color: COLORS.textPrimary, marginBottom: 4, fontWeight: 600 }}>Troque sua senha</div>
+        <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 18, lineHeight: 1.5 }}>
+          Por segurança, você precisa definir uma senha própria antes de continuar — a data de nascimento era só temporária.
+        </div>
+
+        <label style={{ fontSize: 12, color: COLORS.textMuted }}>Nova senha</label>
+        <input value={senha} onChange={(e) => setSenha(e.target.value)} type="password"
+          style={{ width: "100%", marginTop: 4, marginBottom: 14, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary }} />
+
+        <label style={{ fontSize: 12, color: COLORS.textMuted }}>Confirme a nova senha</label>
+        <input value={confirmacao} onChange={(e) => setConfirmacao(e.target.value)} type="password"
+          style={{ width: "100%", marginTop: 4, marginBottom: 18, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary }} />
+
+        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginBottom: 12 }}>{error}</div>}
+
+        <button type="button" onClick={trocar} disabled={saving} style={{
+          width: "100%", background: COLORS.gold, color: "#0A0D11", border: "none", borderRadius: 10,
+          padding: 12, fontWeight: 700, cursor: saving ? "wait" : "pointer",
+        }}>
+          {saving ? "Salvando..." : "Definir nova senha"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const SCREENS = {
   dashboard: Dashboard,
   checklist: Checklist,
@@ -1071,16 +1171,26 @@ export default function FrotaTechApp() {
 
   const isAdmin = profile?.role === "admin" || profile?.role === "gestor";
 
+  const contextValue = {
+    token: session.access_token,
+    user: session.user,
+    profile, isAdmin,
+    veiculos, osList, sosList, loading, loadError,
+    refresh: () => loadData(session.access_token, session.user.id),
+    refreshSos: async () => setSosList(await sbSelect("sos_chamados", "select=*&status=in.(acionado,a_caminho,em_atendimento)&order=acionado_em.desc", session.access_token)),
+    logout,
+  };
+
+  if (!loading && profile?.senha_temporaria) {
+    return (
+      <FleetContext.Provider value={contextValue}>
+        <TrocaSenhaObrigatoria onTrocada={() => setProfile((p) => ({ ...p, senha_temporaria: false }))} />
+      </FleetContext.Provider>
+    );
+  }
+
   return (
-    <FleetContext.Provider value={{
-      token: session.access_token,
-      user: session.user,
-      profile, isAdmin,
-      veiculos, osList, sosList, loading, loadError,
-      refresh: () => loadData(session.access_token, session.user.id),
-      refreshSos: async () => setSosList(await sbSelect("sos_chamados", "select=*&status=in.(acionado,a_caminho,em_atendimento)&order=acionado_em.desc", session.access_token)),
-      logout,
-    }}>
+    <FleetContext.Provider value={contextValue}>
       <AppShell />
     </FleetContext.Provider>
   );
