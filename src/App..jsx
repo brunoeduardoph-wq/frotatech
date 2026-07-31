@@ -769,8 +769,25 @@ function CadastroFuncionario() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [ultimoCriado, setUltimoCriado] = useState(null);
+  const [funcionarios, setFuncionarios] = useState([]);
+  const [carregandoLista, setCarregandoLista] = useState(true);
+  const [busca, setBusca] = useState("");
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function carregarFuncionarios() {
+    setCarregandoLista(true);
+    try {
+      const lista = await sbSelect("profiles", "select=id,full_name,role,cpf,telefone,criado_em&order=full_name.asc", token);
+      setFuncionarios(lista);
+    } catch (e) {
+      // silencioso — a lista é um extra, não bloqueia o cadastro
+    } finally {
+      setCarregandoLista(false);
+    }
+  }
+
+  useEffect(() => { carregarFuncionarios(); }, []);
 
   async function cadastrar(e) {
     e.preventDefault();
@@ -786,12 +803,20 @@ function CadastroFuncionario() {
       }, token);
       setUltimoCriado({ nome: form.nome, cpf: form.cpf });
       setForm({ nome: "", cpf: "", nascimento: "", telefone: "", role: "motorista" });
+      carregarFuncionarios();
     } catch (e) {
       setError(e.message);
     } finally {
       setSaving(false);
     }
   }
+
+  const roleLabel = { motorista: "Motorista", operador: "Operador", mecanico: "Mecânico", supervisor: "Supervisor", gestor: "Gestor", admin: "Administrador" };
+  const filtrados = funcionarios.filter((f) => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return true;
+    return (f.full_name || "").toLowerCase().includes(termo) || (f.cpf || "").includes(termo.replace(/\D/g, ""));
+  });
 
   return (
     <div>
@@ -843,6 +868,42 @@ function CadastroFuncionario() {
             </GoldButton>
           </div>
         </div>
+      </Card>
+
+      <div style={{ marginTop: 28, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ fontSize: 13, color: COLORS.textMuted }}>Funcionários cadastrados ({funcionarios.length})</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", minWidth: 220 }}>
+          <Search size={14} color={COLORS.textMuted} />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome ou CPF"
+            style={{ background: "none", border: "none", outline: "none", color: COLORS.textPrimary, fontSize: 13, width: "100%" }} />
+        </div>
+      </div>
+
+      <Card>
+        {carregandoLista ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: COLORS.textMuted, fontSize: 13 }}>
+            <Loader2 size={14} className="ft-spin" /> Carregando funcionários...
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>Nome</span><span>CPF</span><span>Telefone</span><span>Papel</span>
+            </div>
+            {filtrados.map((f) => (
+              <div key={f.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                <span>{f.full_name}</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", color: COLORS.textMuted }}>{f.cpf}</span>
+                <span style={{ color: COLORS.textMuted }}>{f.telefone || "—"}</span>
+                <Badge color={f.role === "admin" || f.role === "gestor" ? COLORS.gold : COLORS.textMuted}>{roleLabel[f.role] || f.role}</Badge>
+              </div>
+            ))}
+            {filtrados.length === 0 && (
+              <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "12px 0" }}>
+                {busca ? "Nenhum funcionário encontrado com esse termo." : "Nenhum funcionário cadastrado ainda."}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
     </div>
   );
