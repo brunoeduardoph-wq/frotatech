@@ -636,33 +636,42 @@ const campoInputStyle = { width: "100%", marginTop: 4, background: COLORS.surfac
 
 function CAMPOS_ABASTECIMENTO() {
   return [
-    { key: "placa", label: "Placa / identificador do veículo", obrigatorio: true, palavras: ["placa", "veiculo", "veículo", "identificador"] },
+    { key: "placa", label: "Veículo (placa ou código)", obrigatorio: true, palavras: ["placa", "veiculo", "veículo", "identificador"] },
     { key: "litros", label: "Litros", obrigatorio: true, palavras: ["litro", "qtd", "quantidade"] },
     { key: "valor_litro", label: "Valor por litro (R$)", obrigatorio: false, palavras: ["valor unit", "preco", "preço", "unitario", "unitário", "r$/l"] },
     { key: "valor_total", label: "Valor total (R$)", obrigatorio: false, palavras: ["total", "valor total"] },
     { key: "km_horimetro", label: "Km / Horímetro", obrigatorio: false, palavras: ["km", "hodometro", "hodômetro", "horimetro", "horímetro"] },
-    { key: "posto", label: "Posto", obrigatorio: false, palavras: ["posto", "local"] },
+    { key: "posto", label: "Posto / local", obrigatorio: false, palavras: ["posto", "local", "tanque"] },
     { key: "data", label: "Data do abastecimento", obrigatorio: false, palavras: ["data", "dia"] },
   ];
 }
 
-function adivinharColuna(colunas, palavras) {
-  const achada = colunas.find((c) => palavras.some((p) => c.toLowerCase().includes(p)));
-  return achada || "";
+function adivinharColunaPorIndice(exemplos, palavras) {
+  // exemplos: array de { indice, rotulo (minúsculo, ex: "coluna 3: cp-06 - tpu-8e60") }
+  const achada = exemplos.find((c) => palavras.some((p) => c.rotulo.includes(p)));
+  return achada ? achada.indice : "";
 }
 
 function ImportarCSVCombustivel({ onImportado }) {
   const { token, veiculos } = useFleet();
   const [aberto, setAberto] = useState(false);
-  const [colunas, setColunas] = useState([]);
-  const [linhas, setLinhas] = useState([]);
+  const [linhasBrutas, setLinhasBrutas] = useState([]); // array de arrays
+  const [primeiraLinhaCabecalho, setPrimeiraLinhaCabecalho] = useState(false);
   const [nomeArquivo, setNomeArquivo] = useState("");
   const [mapa, setMapa] = useState({});
+  const [extrairPlacaDoTexto, setExtrairPlacaDoTexto] = useState(false);
   const [importando, setImportando] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState("");
 
   const campos = CAMPOS_ABASTECIMENTO();
+  const linhasDados = primeiraLinhaCabecalho ? linhasBrutas.slice(1) : linhasBrutas;
+  const numColunas = linhasBrutas[0] ? linhasBrutas[0].length : 0;
+  const opcoesColuna = Array.from({ length: numColunas }, (_, i) => {
+    const exemplo = (linhasDados[0] && linhasDados[0][i] !== undefined) ? String(linhasDados[0][i]) : "";
+    const rotuloBase = primeiraLinhaCabecalho && linhasBrutas[0][i] ? String(linhasBrutas[0][i]) : `Coluna ${i + 1}`;
+    return { indice: i, rotulo: `${rotuloBase.toLowerCase()} (ex: ${exemplo.slice(0, 30)})`, label: `${rotuloBase} — ex: "${exemplo.slice(0, 30)}"` };
+  });
 
   function lerArquivo(e) {
     const file = e.target.files[0];
@@ -671,60 +680,141 @@ function ImportarCSVCombustivel({ onImportado }) {
     setResultado(null);
     setError("");
     Papa.parse(file, {
-      header: true,
+      header: false,
       skipEmptyLines: true,
-      delimiter: "", // autodetecta ; ou ,
+      delimiter: "", // autodetecta ; , ou tab
       complete: (res) => {
-        const cols = res.meta.fields || [];
-        setColunas(cols);
-        setLinhas(res.data);
+        const linhas = res.data;
+        setLinhasBrutas(linhas);
+        // heurística simples: se a primeira célula da 1ª linha é só texto (não numérico) e
+        // a da 2ª linha é numérica, provavelmente a 1ª linha é cabeçalho
+        const l0 = linhas[0] || [];
+        const l1 = linhas[1] || [];
+        const provavelCabecalho = l0[0] && isNaN(parseFloat(l0[0])) && l1[0] && !isNaN(parseFloat(l1[0]));
+        setPrimeiraLinhaCabecalho(!!provavelCabecalho);
+        const dados = provavelCabecalho ? linhas.slice(1) : linhas;
+        const exemplos = (l0.length ? l0 : linhas[0] || []).map((_, i) => {
+          const exemplo = dados[0] && dados[0][i] !== undefined ? String(dados[0][i]) : "";
+          const rotuloBase = provavelCabecalho && l0[i] ? String(l0[i]) : `coluna ${i + 1}`;
+          return { indice: i, rotulo: `${rotuloBase.toLowerCase()} ${exemplo.toLowerCase()}` };
+        });
         const novoMapa = {};
-        campos.forEach((c) => { novoMapa[c.key] = adivinharColuna(cols, c.palavras); });
+        campos.forEach((c) => { novoMapa[c.key] = adivinharColunaPorIndice(exemplos, c.palavras); });
+
+        // fallback: quando não há cabeçalho, adivinha pelo FORMATO do valor da 1ª linha de dados
+        const linhaExemplo = dados[0] || [];
+        const usados = new Set(Object.values(novoMapa).filter((v) => v !== ""));
+        const livre = (i) => !usados.has(i);
+        if (novoMapa.data === "") {
+          const i = linhaExemplo.findIndex((v, idx) => livre(idx) && /^\d{2}\/\d{2}\/\d{4}/.test(String(v || "")));
+          if (i !== -1) { novoMapa.data = i; usados.add(i); }
+        }
+        if (novoMapa.placa === "") {
+          const i = linhaExemplo.findIndex((v, idx) => livre(idx) && / - /.test(String(v || "")) && /[A-Za-z]/.test(String(v || "")));
+          if (i !== -1) { novoMapa.placa = i; usados.add(i); }
+        }
+        const colunasReais = [];
+        linhaExemplo.forEach((v, idx) => {
+          if (livre(idx) && /^R\$/i.test(String(v || "").trim())) colunasReais.push(idx);
+        });
+        if (novoMapa.valor_litro === "" && colunasReais[0] !== undefined) { novoMapa.valor_litro = colunasReais[0]; usados.add(colunasReais[0]); }
+        if (novoMapa.valor_total === "" && colunasReais[1] !== undefined) { novoMapa.valor_total = colunasReais[1]; usados.add(colunasReais[1]); }
+        if (novoMapa.litros === "") {
+          const i = linhaExemplo.findIndex((v, idx) => {
+            if (!livre(idx)) return false;
+            const s = String(v || "").trim();
+            if (!/^\d+(\.\d+)?$/.test(s)) return false;
+            const n = parseFloat(s);
+            return n > 0 && n < 5000; // litros plausíveis; evita casar com IDs grandes
+          });
+          if (i !== -1) { novoMapa.litros = i; usados.add(i); }
+        }
+        if (novoMapa.posto === "") {
+          const i = linhaExemplo.findIndex((v, idx) => livre(idx) && /tanque|posto|patio|pátio/i.test(String(v || "")));
+          if (i !== -1) { novoMapa.posto = i; usados.add(i); }
+        }
+
         setMapa(novoMapa);
+        // se a coluna de veículo tiver "-" ou " - " no meio do valor, sugere extrair a placa do texto
+        const idxVeiculo = novoMapa.placa;
+        const exemploVeiculo = idxVeiculo !== "" && dados[0] ? String(dados[0][idxVeiculo] || "") : "";
+        setExtrairPlacaDoTexto(/[A-Za-z]{2,4}-\d{2}\s*-\s*/.test(exemploVeiculo));
       },
       error: (err) => setError("Não consegui ler o arquivo: " + err.message),
     });
   }
 
   function normalizarPlaca(v) {
-    return (v || "").toString().trim().toUpperCase();
+    return (v || "").toString().trim().toUpperCase().replace(/[\s-]/g, "");
   }
+
+  function extrairPlacaOficial(valor) {
+    // formato Evoluma: "CP-06 - TPU-8E60" → pega a parte depois do último " - "
+    const partes = valor.split(" - ");
+    return partes.length > 1 ? partes[partes.length - 1] : valor;
+  }
+
   function paraNumero(v) {
     if (v === undefined || v === null || v === "") return null;
-    const limpo = v.toString().replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
-    const n = parseFloat(limpo);
+    let s = v.toString().trim().replace(/^R\$\s*/i, "").trim();
+    if (s === "" || s === "-") return null;
+    if (s.includes(",")) {
+      // formato brasileiro: ponto = milhar, vírgula = decimal
+      s = s.replace(/\./g, "").replace(",", ".");
+    }
+    // senão, assume que o ponto já é o separador decimal (ex: 374.68)
+    s = s.replace(/[^\d.-]/g, "");
+    const n = parseFloat(s);
     return isNaN(n) ? null : n;
   }
 
+  function parseDataBR(v) {
+    const m = v.toString().match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m) return undefined;
+    const [, d, mo, y, h = "00", mi = "00", s = "00"] = m;
+    return new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}`).toISOString();
+  }
+
   async function confirmarImportacao() {
-    if (!mapa.placa || !mapa.litros) { setError("Mapeie pelo menos as colunas de placa e litros."); return; }
+    if (mapa.placa === "" || mapa.placa === undefined || mapa.litros === "" || mapa.litros === undefined) {
+      setError("Mapeie pelo menos as colunas de veículo e litros.");
+      return;
+    }
     setImportando(true); setError(""); setResultado(null);
 
-    const veiculosPorPlaca = {};
+    // índice de busca: tenta primeiro pela placa oficial, depois pelo código interno da frota
+    const porPlacaOficial = {};
+    const porCodigoInterno = {};
     veiculos.forEach((v) => {
-      const chave = normalizarPlaca(v.placa || v.identificador_interno);
-      if (chave) veiculosPorPlaca[chave] = v.id;
+      if (v.placa_oficial) porPlacaOficial[normalizarPlaca(v.placa_oficial)] = v.id;
+      const codigo = normalizarPlaca(v.placa || v.identificador_interno);
+      if (codigo) porCodigoInterno[codigo] = v.id;
     });
 
     const payload = [];
     const semVeiculo = new Set();
-    for (const linha of linhas) {
-      const placa = normalizarPlaca(linha[mapa.placa]);
-      const veiculo_id = veiculosPorPlaca[placa];
-      if (!veiculo_id) { if (placa) semVeiculo.add(placa); continue; }
+    for (const linha of linhasDados) {
+      let bruto = (linha[mapa.placa] || "").toString().trim();
+      if (!bruto) continue;
+      const candidato = extrairPlacaDoTexto ? extrairPlacaOficial(bruto) : bruto;
+      const chave = normalizarPlaca(candidato);
+      const veiculo_id = porPlacaOficial[chave] || porCodigoInterno[chave] || porCodigoInterno[normalizarPlaca(bruto.split(" - ")[0] || "")];
+      if (!veiculo_id) { semVeiculo.add(bruto); continue; }
+
       const litros = paraNumero(linha[mapa.litros]);
       if (!litros) continue;
-      const valor_litro = mapa.valor_litro ? paraNumero(linha[mapa.valor_litro]) : null;
-      let valor_total = mapa.valor_total ? paraNumero(linha[mapa.valor_total]) : null;
+      const valor_litro = mapa.valor_litro !== "" && mapa.valor_litro !== undefined ? paraNumero(linha[mapa.valor_litro]) : null;
+      let valor_total = mapa.valor_total !== "" && mapa.valor_total !== undefined ? paraNumero(linha[mapa.valor_total]) : null;
       if (!valor_total && valor_litro) valor_total = litros * valor_litro;
+
       payload.push({
         veiculo_id, litros,
         valor_litro: valor_litro || 0,
         valor_total: valor_total || 0,
-        km_horimetro: mapa.km_horimetro ? paraNumero(linha[mapa.km_horimetro]) : null,
-        posto: mapa.posto ? (linha[mapa.posto] || null) : null,
+        km_horimetro: mapa.km_horimetro !== "" && mapa.km_horimetro !== undefined ? paraNumero(linha[mapa.km_horimetro]) : null,
+        posto: mapa.posto !== "" && mapa.posto !== undefined ? (linha[mapa.posto] || null) : null,
         fonte_integracao: "evoluma_csv",
-        registrado_em: mapa.data && linha[mapa.data] ? parseDataBR(linha[mapa.data]) : undefined,
+        ...(mapa.data !== "" && mapa.data !== undefined && linha[mapa.data] ? { registrado_em: parseDataBR(linha[mapa.data]) } : {}),
       });
     }
 
@@ -736,20 +826,13 @@ function ImportarCSVCombustivel({ onImportado }) {
         await sbInsert("abastecimentos", lote, token);
         inseridos += lote.length;
       }
-      setResultado({ inseridos, ignorados: linhas.length - payload.length, semVeiculo: Array.from(semVeiculo) });
+      setResultado({ inseridos, ignorados: linhasDados.length - payload.length, semVeiculo: Array.from(semVeiculo) });
       onImportado();
     } catch (e) {
       setError(e.message);
     } finally {
       setImportando(false);
     }
-  }
-
-  function parseDataBR(v) {
-    // aceita dd/mm/aaaa ou dd/mm/aaaa hh:mm
-    const m = v.toString().match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (!m) return undefined;
-    return new Date(`${m[3]}-${m[2]}-${m[1]}`).toISOString();
   }
 
   if (!aberto) {
@@ -770,24 +853,35 @@ function ImportarCSVCombustivel({ onImportado }) {
         <button onClick={() => setAberto(false)} style={{ background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer" }}><X size={18} /></button>
       </div>
 
-      <input type="file" accept=".csv" onChange={lerArquivo}
+      <input type="file" accept=".csv,.txt" onChange={lerArquivo}
         style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }} />
 
-      {colunas.length > 0 && (
+      {linhasBrutas.length > 0 && (
         <>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
-            {nomeArquivo} — {linhas.length} linhas detectadas. Confirme o mapeamento das colunas:
+            {nomeArquivo} — {linhasDados.length} linhas detectadas ({numColunas} colunas). Confirme o mapeamento:
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 12, marginBottom: 14 }}>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: COLORS.textMuted, marginBottom: 14 }}>
+            <input type="checkbox" checked={primeiraLinhaCabecalho} onChange={(e) => setPrimeiraLinhaCabecalho(e.target.checked)} />
+            A primeira linha do arquivo é um cabeçalho (nomes de coluna)
+          </label>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 12, marginBottom: 10 }}>
             {campos.map((c) => (
               <Campo key={c.key} label={c.label + (c.obrigatorio ? " *" : "")}>
-                <select value={mapa[c.key] || ""} onChange={(e) => setMapa((m) => ({ ...m, [c.key]: e.target.value }))} style={campoInputStyle}>
+                <select value={mapa[c.key] ?? ""} onChange={(e) => setMapa((m) => ({ ...m, [c.key]: e.target.value === "" ? "" : Number(e.target.value) }))} style={campoInputStyle}>
                   <option value="">— não usar —</option>
-                  {colunas.map((col) => <option key={col} value={col}>{col}</option>)}
+                  {opcoesColuna.map((o) => <option key={o.indice} value={o.indice}>{o.label}</option>)}
                 </select>
               </Campo>
             ))}
           </div>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: COLORS.textMuted, marginBottom: 14 }}>
+            <input type="checkbox" checked={extrairPlacaDoTexto} onChange={(e) => setExtrairPlacaDoTexto(e.target.checked)} />
+            A coluna do veículo vem no formato "código - placa" (ex: CP-06 - TPU-8E60) — extrair só a placa
+          </label>
 
           {error && <div style={{ color: COLORS.alert, fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
@@ -797,7 +891,7 @@ function ImportarCSVCombustivel({ onImportado }) {
               {resultado.ignorados > 0 && <div style={{ color: COLORS.textMuted }}>{resultado.ignorados} linhas ignoradas (sem litros ou veículo não encontrado).</div>}
               {resultado.semVeiculo.length > 0 && (
                 <div style={{ color: COLORS.gold, marginTop: 6 }}>
-                  Placas não encontradas na frota: {resultado.semVeiculo.slice(0, 15).join(", ")}{resultado.semVeiculo.length > 15 ? "..." : ""}
+                  Veículos não encontrados na frota: {resultado.semVeiculo.slice(0, 15).join(", ")}{resultado.semVeiculo.length > 15 ? "..." : ""}
                 </div>
               )}
             </div>
@@ -805,7 +899,7 @@ function ImportarCSVCombustivel({ onImportado }) {
 
           <GoldButton onClick={confirmarImportacao}>
             {importando ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />}
-            {importando ? "Importando..." : `Confirmar importação (${linhas.length} linhas)`}
+            {importando ? "Importando..." : `Confirmar importação (${linhasDados.length} linhas)`}
           </GoldButton>
         </>
       )}
