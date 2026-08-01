@@ -397,6 +397,7 @@ function Checklist() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [modo, setModo] = useState("novo");
   const itens = ["Nível de óleo", "Freios", "Pneus e calibragem", "Luzes e sinalização", "Fluído de arrefecimento", "Cinto de segurança", "Extintor / EPI"];
 
   async function concluir() {
@@ -423,79 +424,253 @@ function Checklist() {
     }
   }
 
-  if (!selected) {
-    return (
-      <div>
-        <SectionHeader eyebrow="Início / fim de turno" title="Checklist" />
-        <Card>
-          <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 12 }}>Selecione um veículo para iniciar</div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {veiculos.map((v) => (
-              <button key={v.id} onClick={() => { setSelected(v); setRespostas({}); setSaved(false); setError(""); }} style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10,
-                padding: 12, color: COLORS.textPrimary, cursor: "pointer", textAlign: "left",
-              }}>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{v.placa || v.identificador_interno} — {v.categoria}</span>
-                <ChevronRight size={16} color={COLORS.textMuted} />
-              </button>
-            ))}
-            {veiculos.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted }}>Nenhum veículo cadastrado ainda na tabela `veiculos`.</div>}
-          </div>
-        </Card>
-      </div>
-    );
-  }
+ function parseObservacoes(texto) {
+  if (!texto) return [];
+  return texto.split(" | ").map((parte) => {
+    const [itemStatus, resto] = parte.split(": ");
+    const status = resto ? resto.split(" — ")[0].split(" [foto:")[0].trim() : "";
+    const temFoto = parte.match(/\[foto: (.*?)\]/);
+    const semFoto = parte.replace(/\[foto: .*?\]/, "").trim();
+    const observacao = semFoto.includes(" — ") ? semFoto.split(" — ").slice(1).join(" — ").trim() : "";
+    return { item: itemStatus, status, observacao, foto: temFoto ? temFoto[1] : null };
+  });
+}
 
-  if (saved) {
-    return (
-      <div>
-        <SectionHeader eyebrow={selected.placa || selected.identificador_interno} title="Checklist enviado" />
-        <Card style={{ display: "flex", alignItems: "center", gap: 10, color: COLORS.ok }}>
-          <CheckCircle2 size={20} /> Registrado no Supabase com sucesso.
-        </Card>
-        <div style={{ marginTop: 14 }}>
-          <GoldButton onClick={() => setSelected(null)}>Novo checklist</GoldButton>
-        </div>
-      </div>
-    );
-  }
+function ChecklistsRealizados({ token }) {
+  const [dados, setDados] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [filtroStatus, setFiltroStatus] = useState("todos");
+  const [expandido, setExpandido] = useState(null);
+
+  useEffect(() => {
+    setCarregando(true);
+    sbSelect("checklists", "select=*,veiculos(placa,identificador_interno,categoria),profiles(full_name)&order=criado_em.desc&limit=200", token)
+      .then((data) => { setDados(data || []); setCarregando(false); })
+      .catch((e) => { setErro(e.message); setCarregando(false); });
+  }, [token]);
+
+  const filtrados = dados.filter((c) => {
+    const placa = c.veiculos?.placa || c.veiculos?.identificador_interno || "";
+    const nome = c.profiles?.full_name || "";
+    const buscaOk = !busca || placa.toLowerCase().includes(busca.toLowerCase()) || nome.toLowerCase().includes(busca.toLowerCase());
+    const tipoOk = filtroTipo === "todos" || c.tipo === filtroTipo;
+    const statusOk = filtroStatus === "todos" || (filtroStatus === "aprovado" ? c.aprovado : !c.aprovado);
+    return buscaOk && tipoOk && statusOk;
+  });
 
   return (
     <div>
-      <SectionHeader eyebrow={selected.placa || selected.identificador_interno} title="Checklist de início de turno" action={<button onClick={() => setSelected(null)} style={{ background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer" }}><X size={20} /></button>} />
-      <Card>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {itens.map((item) => (
-            <div key={item} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: `1px solid ${COLORS.border}` }}>
-              <span style={{ fontSize: 14 }}>{item}</span>
-              <div style={{ display: "flex", gap: 6 }}>
-                {[
-                  { key: "ok", icon: CheckCircle2, color: COLORS.ok },
-                  { key: "atencao", icon: AlertTriangle, color: COLORS.gold },
-                  { key: "critico", icon: XCircle, color: COLORS.alert },
-                ].map((opt) => (
-                  <button key={opt.key} onClick={() => setRespostas((r) => ({ ...r, [item]: opt.key }))}
-                    style={{
-                      background: respostas[item] === opt.key ? `${opt.color}22` : "transparent",
-                      border: `1px solid ${respostas[item] === opt.key ? opt.color : COLORS.border}`,
-                      borderRadius: 8, padding: 6, cursor: "pointer", display: "flex",
-                    }}>
-                    <opt.icon size={16} color={opt.color} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <input
+          placeholder="Buscar placa ou colaborador..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          style={{
+            flex: "1 1 200px", background: COLORS.surface, border: `1px solid ${COLORS.border}`,
+            borderRadius: 8, padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
+          }}
+        />
+        <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} style={{
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+          padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
+        }}>
+          <option value="todos">Todos os tipos</option>
+          <option value="inicio_turno">Início de turno</option>
+          <option value="fim_turno">Fim de turno</option>
+        </select>
+        <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+          padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
+        }}>
+          <option value="todos">Todos os status</option>
+          <option value="aprovado">Aprovado</option>
+          <option value="critico">Com item crítico</option>
+        </select>
+      </div>
+
+      {carregando && <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div>}
+      {erro && <div style={{ color: COLORS.alert, fontSize: 13 }}>{erro}</div>}
+
+      {!carregando && !erro && (
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr 130px 90px 60px", gap: 8, padding: "10px 14px", borderBottom: `1px solid ${COLORS.border}`, fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            <span>Placa</span>
+            <span>Tipo</span>
+            <span>Colaborador</span>
+            <span>Data envio</span>
+            <span>Status</span>
+            <span></span>
+          </div>
+          {filtrados.map((c) => {
+            const itensDetalhados = parseObservacoes(c.observacoes_gerais);
+            const abertos = itensDetalhados.filter((i) => i.status === "atencao" || i.status === "critico");
+            const aberto = expandido === c.id;
+            return (
+              <div key={c.id}>
+                <div style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr 130px 90px 60px", gap: 8, padding: "12px 14px", borderBottom: `1px solid ${COLORS.border}`, alignItems: "center", fontSize: 13 }}>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", color: COLORS.textPrimary }}>{c.veiculos?.placa || c.veiculos?.identificador_interno || "—"}</span>
+                  <span style={{ color: COLORS.textMuted }}>{c.tipo === "inicio_turno" ? "Início" : c.tipo === "fim_turno" ? "Fim" : "—"}</span>
+                  <span style={{ color: COLORS.textPrimary }}>{c.profiles?.full_name || "—"}</span>
+                  <span style={{ color: COLORS.textMuted, fontSize: 12 }}>{c.criado_em ? new Date(c.criado_em).toLocaleString("pt-BR") : "—"}</span>
+                  <span style={{
+                    color: c.aprovado ? COLORS.ok : COLORS.alert, fontSize: 12, fontWeight: 700,
+                    display: "flex", alignItems: "center", gap: 4,
+                  }}>
+                    {c.aprovado ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                    {c.aprovado ? "OK" : "Crítico"}
+                  </span>
+                  <button onClick={() => setExpandido(aberto ? null : c.id)} style={{ background: "none", border: "none", color: COLORS.gold, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    {aberto ? "Fechar" : "Ver mais"}
                   </button>
-                ))}
+                </div>
+                {aberto && (
+                  <div style={{ padding: "12px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}` }}>
+                    {abertos.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted }}>Nenhum item de atenção ou crítico registrado.</div>}
+                    {abertos.map((i, idx) => (
+                      <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", borderBottom: idx < abertos.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
+                        {i.foto && <img src={i.foto} alt="" style={{ width: 56, height: 56, borderRadius: 6, objectFit: "cover" }} />}
+                        <div>
+                          <div style={{ fontSize: 13, color: COLORS.textPrimary, fontWeight: 600 }}>{i.item} — <span style={{ color: i.status === "critico" ? COLORS.alert : COLORS.gold }}>{i.status}</span></div>
+                          {i.observacao && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{i.observacao}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
-        </div>
-        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
-        <div style={{ marginTop: 16 }}>
-          <GoldButton onClick={concluir}>
-            {saving ? <Loader2 size={15} className="ft-spin" /> : <CheckCircle2 size={15} />}
-            {saving ? "Enviando..." : "Concluir e liberar veículo"}
-          </GoldButton>
-        </div>
-      </Card>
+            );
+          })}
+          {filtrados.length === 0 && <div style={{ padding: 20, textAlign: "center", color: COLORS.textMuted, fontSize: 13 }}>Nenhum checklist encontrado com esses filtros.</div>}
+        </Card>
+      )}
+    </div>
+  );
+}
+function parseObservacoes(texto) {
+  if (!texto) return [];
+  return texto.split(" | ").map((parte) => {
+    const [itemStatus, resto] = parte.split(": ");
+    const status = resto ? resto.split(" — ")[0].split(" [foto:")[0].trim() : "";
+    const temFoto = parte.match(/\[foto: (.*?)\]/);
+    const semFoto = parte.replace(/\[foto: .*?\]/, "").trim();
+    const observacao = semFoto.includes(" — ") ? semFoto.split(" — ").slice(1).join(" — ").trim() : "";
+    return { item: itemStatus, status, observacao, foto: temFoto ? temFoto[1] : null };
+  });
+}
+
+function ChecklistsRealizados({ token }) {
+  const [dados, setDados] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [filtroStatus, setFiltroStatus] = useState("todos");
+  const [expandido, setExpandido] = useState(null);
+
+  useEffect(() => {
+    setCarregando(true);
+    sbSelect("checklists", "select=*,veiculos(placa,identificador_interno,categoria),profiles(full_name)&order=criado_em.desc&limit=200", token)
+      .then((data) => { setDados(data || []); setCarregando(false); })
+      .catch((e) => { setErro(e.message); setCarregando(false); });
+  }, [token]);
+
+  const filtrados = dados.filter((c) => {
+    const placa = c.veiculos?.placa || c.veiculos?.identificador_interno || "";
+    const nome = c.profiles?.full_name || "";
+    const buscaOk = !busca || placa.toLowerCase().includes(busca.toLowerCase()) || nome.toLowerCase().includes(busca.toLowerCase());
+    const tipoOk = filtroTipo === "todos" || c.tipo === filtroTipo;
+    const statusOk = filtroStatus === "todos" || (filtroStatus === "aprovado" ? c.aprovado : !c.aprovado);
+    return buscaOk && tipoOk && statusOk;
+  });
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <input
+          placeholder="Buscar placa ou colaborador..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          style={{
+            flex: "1 1 200px", background: COLORS.surface, border: `1px solid ${COLORS.border}`,
+            borderRadius: 8, padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
+          }}
+        />
+        <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} style={{
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+          padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
+        }}>
+          <option value="todos">Todos os tipos</option>
+          <option value="inicio_turno">Início de turno</option>
+          <option value="fim_turno">Fim de turno</option>
+        </select>
+        <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+          padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
+        }}>
+          <option value="todos">Todos os status</option>
+          <option value="aprovado">Aprovado</option>
+          <option value="critico">Com item crítico</option>
+        </select>
+      </div>
+
+      {carregando && <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div>}
+      {erro && <div style={{ color: COLORS.alert, fontSize: 13 }}>{erro}</div>}
+
+      {!carregando && !erro && (
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr 130px 90px 60px", gap: 8, padding: "10px 14px", borderBottom: `1px solid ${COLORS.border}`, fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            <span>Placa</span>
+            <span>Tipo</span>
+            <span>Colaborador</span>
+            <span>Data envio</span>
+            <span>Status</span>
+            <span></span>
+          </div>
+          {filtrados.map((c) => {
+            const itensDetalhados = parseObservacoes(c.observacoes_gerais);
+            const abertos = itensDetalhados.filter((i) => i.status === "atencao" || i.status === "critico");
+            const aberto = expandido === c.id;
+            return (
+              <div key={c.id}>
+                <div style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr 130px 90px 60px", gap: 8, padding: "12px 14px", borderBottom: `1px solid ${COLORS.border}`, alignItems: "center", fontSize: 13 }}>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", color: COLORS.textPrimary }}>{c.veiculos?.placa || c.veiculos?.identificador_interno || "—"}</span>
+                  <span style={{ color: COLORS.textMuted }}>{c.tipo === "inicio_turno" ? "Início" : c.tipo === "fim_turno" ? "Fim" : "—"}</span>
+                  <span style={{ color: COLORS.textPrimary }}>{c.profiles?.full_name || "—"}</span>
+                  <span style={{ color: COLORS.textMuted, fontSize: 12 }}>{c.criado_em ? new Date(c.criado_em).toLocaleString("pt-BR") : "—"}</span>
+                  <span style={{
+                    color: c.aprovado ? COLORS.ok : COLORS.alert, fontSize: 12, fontWeight: 700,
+                    display: "flex", alignItems: "center", gap: 4,
+                  }}>
+                    {c.aprovado ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                    {c.aprovado ? "OK" : "Crítico"}
+                  </span>
+                  <button onClick={() => setExpandido(aberto ? null : c.id)} style={{ background: "none", border: "none", color: COLORS.gold, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    {aberto ? "Fechar" : "Ver mais"}
+                  </button>
+                </div>
+                {aberto && (
+                  <div style={{ padding: "12px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}` }}>
+                    {abertos.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted }}>Nenhum item de atenção ou crítico registrado.</div>}
+                    {abertos.map((i, idx) => (
+                      <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", borderBottom: idx < abertos.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
+                        {i.foto && <img src={i.foto} alt="" style={{ width: 56, height: 56, borderRadius: 6, objectFit: "cover" }} />}
+                        <div>
+                          <div style={{ fontSize: 13, color: COLORS.textPrimary, fontWeight: 600 }}>{i.item} — <span style={{ color: i.status === "critico" ? COLORS.alert : COLORS.gold }}>{i.status}</span></div>
+                          {i.observacao && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{i.observacao}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {filtrados.length === 0 && <div style={{ padding: 20, textAlign: "center", color: COLORS.textMuted, fontSize: 13 }}>Nenhum checklist encontrado com esses filtros.</div>}
+        </Card>
+      )}
     </div>
   );
 }
