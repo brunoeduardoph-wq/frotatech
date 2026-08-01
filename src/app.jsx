@@ -636,20 +636,42 @@ const campoInputStyle = { width: "100%", marginTop: 4, background: COLORS.surfac
 
 function CAMPOS_ABASTECIMENTO() {
   return [
-    { key: "placa", label: "Veículo (placa ou código)", obrigatorio: true, palavras: ["placa", "veiculo", "veículo", "identificador"] },
+    { key: "placa", label: "Veículo (placa ou código)", obrigatorio: true, palavras: ["prefixo", "placa", "veiculo", "veículo", "identificador"] },
     { key: "litros", label: "Litros", obrigatorio: true, palavras: ["litro", "qtd", "quantidade"] },
-    { key: "valor_litro", label: "Valor por litro (R$)", obrigatorio: false, palavras: ["valor unit", "preco", "preço", "unitario", "unitário", "r$/l"] },
-    { key: "valor_total", label: "Valor total (R$)", obrigatorio: false, palavras: ["total", "valor total"] },
-    { key: "km_horimetro", label: "Km / Horímetro", obrigatorio: false, palavras: ["km", "hodometro", "hodômetro", "horimetro", "horímetro"] },
+    { key: "valor_litro", label: "Valor por litro (R$)", obrigatorio: false, palavras: ["valor por litro", "r$/l", "valor unit", "preco unit", "preço unit", "unitario", "unitário"] },
+    { key: "valor_total", label: "Valor total (R$)", obrigatorio: false, palavras: ["valor total"] },
+    { key: "km_horimetro", label: "Km / Horímetro", obrigatorio: false, palavras: ["hodometro", "hodômetro", "horimetro", "horímetro", "km"] },
     { key: "posto", label: "Posto / local", obrigatorio: false, palavras: ["posto", "local", "tanque"] },
     { key: "data", label: "Data do abastecimento", obrigatorio: false, palavras: ["data", "dia"] },
   ];
 }
 
 function adivinharColunaPorIndice(exemplos, palavras) {
-  // exemplos: array de { indice, rotulo (minúsculo, ex: "coluna 3: cp-06 - tpu-8e60") }
-  const achada = exemplos.find((c) => palavras.some((p) => c.rotulo.includes(p)));
-  return achada ? achada.indice : "";
+  // prioriza a ORDEM das palavras-chave (não a ordem das colunas): checa cada
+  // palavra-chave em todas as colunas antes de passar pra próxima palavra
+  for (const p of palavras) {
+    const achada = exemplos.find((c) => c.rotulo.includes(p));
+    if (achada) return achada.indice;
+  }
+  return "";
+}
+
+// Muitos sistemas (Evoluma incluso) exportam ".xls" que na verdade é uma
+// tabela HTML. Detecta isso e extrai a maior tabela do arquivo.
+function tentarExtrairTabelaHtml(texto) {
+  const parece = /<html|<table/i.test(texto.slice(0, 2000));
+  if (!parece) return null;
+  const doc = new DOMParser().parseFromString(texto, "text/html");
+  const tabelas = Array.from(doc.querySelectorAll("table"));
+  if (tabelas.length === 0) return null;
+  let melhores = [];
+  for (const t of tabelas) {
+    const linhas = Array.from(t.querySelectorAll("tr"))
+      .map((tr) => Array.from(tr.querySelectorAll("td,th")).map((td) => td.textContent.trim()))
+      .filter((l) => l.length > 1);
+    if (linhas.length > melhores.length) melhores = linhas;
+  }
+  return melhores.length > 0 ? melhores : null;
 }
 
 function ImportarCSVCombustivel({ onImportado }) {
@@ -673,75 +695,85 @@ function ImportarCSVCombustivel({ onImportado }) {
     return { indice: i, rotulo: `${rotuloBase.toLowerCase()} (ex: ${exemplo.slice(0, 30)})`, label: `${rotuloBase} — ex: "${exemplo.slice(0, 30)}"` };
   });
 
+  function processarLinhas(linhas) {
+    setLinhasBrutas(linhas);
+    const l0 = linhas[0] || [];
+    const l1 = linhas[1] || [];
+    const provavelCabecalho = l0[0] && isNaN(parseFloat(l0[0])) && l1[0] && !isNaN(parseFloat(l1[0]));
+    const temCabecalho = !!provavelCabecalho || /data|placa|litro|prefixo/i.test(l0.join(" "));
+    setPrimeiraLinhaCabecalho(temCabecalho);
+    const dados = temCabecalho ? linhas.slice(1) : linhas;
+    const exemplos = (l0.length ? l0 : linhas[0] || []).map((_, i) => {
+      const exemplo = dados[0] && dados[0][i] !== undefined ? String(dados[0][i]) : "";
+      const rotuloBase = temCabecalho && l0[i] ? String(l0[i]) : `coluna ${i + 1}`;
+      return { indice: i, rotulo: `${rotuloBase.toLowerCase()} ${exemplo.toLowerCase()}` };
+    });
+    const novoMapa = {};
+    campos.forEach((c) => { novoMapa[c.key] = adivinharColunaPorIndice(exemplos, c.palavras); });
+
+    // fallback por FORMATO do dado, só pro que não foi identificado por cabeçalho
+    const linhaExemplo = dados[0] || [];
+    const usados = new Set(Object.values(novoMapa).filter((v) => v !== ""));
+    const livre = (i) => !usados.has(i);
+    if (novoMapa.data === "") {
+      const i = linhaExemplo.findIndex((v, idx) => livre(idx) && /^\d{2}\/\d{2}\/\d{4}/.test(String(v || "")));
+      if (i !== -1) { novoMapa.data = i; usados.add(i); }
+    }
+    if (novoMapa.placa === "") {
+      const i = linhaExemplo.findIndex((v, idx) => livre(idx) && / - /.test(String(v || "")) && /[A-Za-z]/.test(String(v || "")));
+      if (i !== -1) { novoMapa.placa = i; usados.add(i); }
+    }
+    if (novoMapa.valor_total === "" || novoMapa.valor_litro === "") {
+      const colunasReais = [];
+      linhaExemplo.forEach((v, idx) => { if (livre(idx) && /^R\$/i.test(String(v || "").trim())) colunasReais.push(idx); });
+      if (novoMapa.valor_litro === "" && colunasReais[0] !== undefined) { novoMapa.valor_litro = colunasReais[0]; usados.add(colunasReais[0]); }
+      if (novoMapa.valor_total === "" && colunasReais[1] !== undefined) { novoMapa.valor_total = colunasReais[1]; usados.add(colunasReais[1]); }
+    }
+    if (novoMapa.litros === "") {
+      const i = linhaExemplo.findIndex((v, idx) => {
+        if (!livre(idx)) return false;
+        const s = String(v || "").trim();
+        if (!/^\d+([.,]\d+)?$/.test(s)) return false;
+        const n = parseFloat(s.replace(",", "."));
+        return n > 0 && n < 5000;
+      });
+      if (i !== -1) { novoMapa.litros = i; usados.add(i); }
+    }
+    if (novoMapa.posto === "") {
+      const i = linhaExemplo.findIndex((v, idx) => livre(idx) && /tanque|posto|patio|pátio/i.test(String(v || "")));
+      if (i !== -1) { novoMapa.posto = i; usados.add(i); }
+    }
+
+    setMapa(novoMapa);
+    const idxVeiculo = novoMapa.placa;
+    const exemploVeiculo = idxVeiculo !== "" && dados[0] ? String(dados[0][idxVeiculo] || "") : "";
+    setExtrairPlacaDoTexto(/[A-Za-z]{2,4}-?\d{2}\s*-\s*[A-Za-z0-9]/.test(exemploVeiculo) && / - /.test(exemploVeiculo));
+  }
+
   function lerArquivo(e) {
     const file = e.target.files[0];
     if (!file) return;
     setNomeArquivo(file.name);
     setResultado(null);
     setError("");
-    Papa.parse(file, {
-      header: false,
-      skipEmptyLines: true,
-      delimiter: "", // autodetecta ; , ou tab
-      complete: (res) => {
-        const linhas = res.data;
-        setLinhasBrutas(linhas);
-        // heurística simples: se a primeira célula da 1ª linha é só texto (não numérico) e
-        // a da 2ª linha é numérica, provavelmente a 1ª linha é cabeçalho
-        const l0 = linhas[0] || [];
-        const l1 = linhas[1] || [];
-        const provavelCabecalho = l0[0] && isNaN(parseFloat(l0[0])) && l1[0] && !isNaN(parseFloat(l1[0]));
-        setPrimeiraLinhaCabecalho(!!provavelCabecalho);
-        const dados = provavelCabecalho ? linhas.slice(1) : linhas;
-        const exemplos = (l0.length ? l0 : linhas[0] || []).map((_, i) => {
-          const exemplo = dados[0] && dados[0][i] !== undefined ? String(dados[0][i]) : "";
-          const rotuloBase = provavelCabecalho && l0[i] ? String(l0[i]) : `coluna ${i + 1}`;
-          return { indice: i, rotulo: `${rotuloBase.toLowerCase()} ${exemplo.toLowerCase()}` };
+    const reader = new FileReader();
+    reader.onload = () => {
+      const texto = reader.result;
+      const tabelaHtml = tentarExtrairTabelaHtml(texto);
+      if (tabelaHtml) {
+        processarLinhas(tabelaHtml);
+      } else {
+        Papa.parse(texto, {
+          header: false,
+          skipEmptyLines: true,
+          delimiter: "",
+          complete: (res) => processarLinhas(res.data),
+          error: (err) => setError("Não consegui ler o arquivo: " + err.message),
         });
-        const novoMapa = {};
-        campos.forEach((c) => { novoMapa[c.key] = adivinharColunaPorIndice(exemplos, c.palavras); });
-
-        // fallback: quando não há cabeçalho, adivinha pelo FORMATO do valor da 1ª linha de dados
-        const linhaExemplo = dados[0] || [];
-        const usados = new Set(Object.values(novoMapa).filter((v) => v !== ""));
-        const livre = (i) => !usados.has(i);
-        if (novoMapa.data === "") {
-          const i = linhaExemplo.findIndex((v, idx) => livre(idx) && /^\d{2}\/\d{2}\/\d{4}/.test(String(v || "")));
-          if (i !== -1) { novoMapa.data = i; usados.add(i); }
-        }
-        if (novoMapa.placa === "") {
-          const i = linhaExemplo.findIndex((v, idx) => livre(idx) && / - /.test(String(v || "")) && /[A-Za-z]/.test(String(v || "")));
-          if (i !== -1) { novoMapa.placa = i; usados.add(i); }
-        }
-        const colunasReais = [];
-        linhaExemplo.forEach((v, idx) => {
-          if (livre(idx) && /^R\$/i.test(String(v || "").trim())) colunasReais.push(idx);
-        });
-        if (novoMapa.valor_litro === "" && colunasReais[0] !== undefined) { novoMapa.valor_litro = colunasReais[0]; usados.add(colunasReais[0]); }
-        if (novoMapa.valor_total === "" && colunasReais[1] !== undefined) { novoMapa.valor_total = colunasReais[1]; usados.add(colunasReais[1]); }
-        if (novoMapa.litros === "") {
-          const i = linhaExemplo.findIndex((v, idx) => {
-            if (!livre(idx)) return false;
-            const s = String(v || "").trim();
-            if (!/^\d+(\.\d+)?$/.test(s)) return false;
-            const n = parseFloat(s);
-            return n > 0 && n < 5000; // litros plausíveis; evita casar com IDs grandes
-          });
-          if (i !== -1) { novoMapa.litros = i; usados.add(i); }
-        }
-        if (novoMapa.posto === "") {
-          const i = linhaExemplo.findIndex((v, idx) => livre(idx) && /tanque|posto|patio|pátio/i.test(String(v || "")));
-          if (i !== -1) { novoMapa.posto = i; usados.add(i); }
-        }
-
-        setMapa(novoMapa);
-        // se a coluna de veículo tiver "-" ou " - " no meio do valor, sugere extrair a placa do texto
-        const idxVeiculo = novoMapa.placa;
-        const exemploVeiculo = idxVeiculo !== "" && dados[0] ? String(dados[0][idxVeiculo] || "") : "";
-        setExtrairPlacaDoTexto(/[A-Za-z]{2,4}-\d{2}\s*-\s*/.test(exemploVeiculo));
-      },
-      error: (err) => setError("Não consegui ler o arquivo: " + err.message),
-    });
+      }
+    };
+    reader.onerror = () => setError("Não consegui ler o arquivo.");
+    reader.readAsText(file, "UTF-8");
   }
 
   function normalizarPlaca(v) {
