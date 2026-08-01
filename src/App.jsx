@@ -943,17 +943,43 @@ function Combustivel() {
   const { token, veiculos, refresh } = useFleet();
   const [lista, setLista] = useState([]);
   const [carregando, setCarregando] = useState(true);
+  const [carregandoMais, setCarregandoMais] = useState(false);
+  const [temMais, setTemMais] = useState(true);
+  const [total, setTotal] = useState(null);
   const [form, setForm] = useState({ veiculo_id: "", litros: "", valor_litro: "", posto: "", km_horimetro: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const TAMANHO_PAGINA = 50;
 
   async function carregar() {
     setCarregando(true);
     try {
-      const dados = await sbSelect("abastecimentos", "select=id,litros,valor_litro,valor_total,posto,registrado_em,veiculos(placa,identificador_interno)&order=registrado_em.desc&limit=50", token);
+      const dados = await sbSelect("abastecimentos", `select=id,litros,valor_litro,valor_total,posto,registrado_em,veiculos(placa,identificador_interno)&order=registrado_em.desc&limit=${TAMANHO_PAGINA}&offset=0`, token);
       setLista(dados);
+      setTemMais(dados.length === TAMANHO_PAGINA);
+      contarTotal();
     } catch (e) { /* silencioso */ } finally { setCarregando(false); }
   }
+
+  async function contarTotal() {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/abastecimentos?select=id`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, Prefer: "count=exact", Range: "0-0" },
+      });
+      const cr = res.headers.get("content-range"); // ex: "0-0/1135"
+      if (cr) setTotal(parseInt(cr.split("/")[1], 10));
+    } catch (e) { /* opcional */ }
+  }
+
+  async function carregarMais() {
+    setCarregandoMais(true);
+    try {
+      const dados = await sbSelect("abastecimentos", `select=id,litros,valor_litro,valor_total,posto,registrado_em,veiculos(placa,identificador_interno)&order=registrado_em.desc&limit=${TAMANHO_PAGINA}&offset=${lista.length}`, token);
+      setLista((l) => [...l, ...dados]);
+      setTemMais(dados.length === TAMANHO_PAGINA);
+    } catch (e) { /* silencioso */ } finally { setCarregandoMais(false); }
+  }
+
   useEffect(() => { carregar(); }, []);
 
   async function registrar(e) {
@@ -994,19 +1020,33 @@ function Combustivel() {
       <Card>
         {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
           <div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
-              <span>Veículo</span><span>Litros</span><span>R$/L</span><span>Total</span><span>Posto</span>
+            <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
+              Mostrando {lista.length}{total !== null ? ` de ${total}` : ""} abastecimentos
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>Veículo</span><span>Litros</span><span>R$/L</span><span>Total</span><span>Posto</span><span>Data</span>
             </div>
             {lista.map((a) => (
-              <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+              <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
                 <span>{a.veiculos?.placa || a.veiculos?.identificador_interno || "—"}</span>
                 <span>{a.litros} L</span>
                 <span>R$ {Number(a.valor_litro).toFixed(2)}</span>
                 <span>R$ {Number(a.valor_total).toFixed(2)}</span>
                 <span>{a.posto || "—"}</span>
+                <span>{a.registrado_em ? new Date(a.registrado_em).toLocaleDateString("pt-BR") : "—"}</span>
               </div>
             ))}
             {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhum abastecimento registrado ainda.</div>}
+            {temMais && (
+              <div style={{ marginTop: 14, textAlign: "center" }}>
+                <button onClick={carregarMais} disabled={carregandoMais} style={{
+                  background: "none", border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.textMuted,
+                  padding: "8px 16px", fontSize: 13, cursor: carregandoMais ? "wait" : "pointer",
+                }}>
+                  {carregandoMais ? "Carregando..." : "Carregar mais"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Card>
