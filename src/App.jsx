@@ -939,8 +939,198 @@ function ImportarCSVCombustivel({ onImportado }) {
   );
 }
 
+function DashboardCombustivel() {
+  const { token } = useFleet();
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [categoria, setCategoria] = useState("todos"); // todos | pesada | leve | amarela
+  const [periodo, setPeriodo] = useState("mes_atual"); // mes_atual | tudo
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      const todos = await sbSelect("abastecimentos", "select=veiculo_id,litros,valor_total,posto,km_horimetro,registrado_em,veiculos(placa,identificador_interno,linha,categoria)&order=registrado_em.asc&limit=5000", token);
+      setDados(todos);
+    } catch (e) { setDados([]); } finally { setCarregando(false); }
+  }
+  useEffect(() => { carregar(); }, []);
+
+  if (carregando) return <Card><div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando dashboard...</div></Card>;
+  if (!dados || dados.length === 0) return <Card><div style={{ color: COLORS.textMuted, fontSize: 13 }}>Sem dados de abastecimento ainda.</div></Card>;
+
+  const agora = new Date();
+  const dentroDoPeriodo = (dataStr) => {
+    if (periodo === "tudo") return true;
+    if (!dataStr) return false;
+    const d = new Date(dataStr);
+    return d.getFullYear() === agora.getFullYear() && d.getMonth() === agora.getMonth();
+  };
+
+  // eventos de km/horas: calculados sobre o HISTÓRICO COMPLETO de cada veículo
+  // (senão o primeiro abastecimento do mês perderia a referência do mês anterior),
+  // mas só somados ao total se a leitura mais recente do par cair no período escolhido.
+  const porVeiculo = {};
+  dados.forEach((d) => {
+    if (!d.veiculo_id) return;
+    porVeiculo[d.veiculo_id] = porVeiculo[d.veiculo_id] || {
+      linha: d.veiculos?.linha, placa: d.veiculos?.placa || d.veiculos?.identificador_interno, registros: [],
+    };
+    porVeiculo[d.veiculo_id].registros.push({ km_horimetro: d.km_horimetro, data: d.registrado_em });
+  });
+
+  let totalKm = 0, totalHoras = 0, veiculosComKm = new Set(), veiculosComHoras = new Set();
+  Object.entries(porVeiculo).forEach(([id, v]) => {
+    if (categoria !== "todos" && v.linha !== categoria) return;
+    const comLeitura = v.registros.filter((r) => r.km_horimetro !== null && r.km_horimetro !== undefined).sort((a, b) => (a.data || "").localeCompare(b.data || ""));
+    for (let i = 1; i < comLeitura.length; i++) {
+      const delta = Number(comLeitura[i].km_horimetro) - Number(comLeitura[i - 1].km_horimetro);
+      if (delta <= 0 || delta > 5000) continue; // ignora resets/anomalias
+      if (!dentroDoPeriodo(comLeitura[i].data)) continue;
+      if (v.linha === "leve" || v.linha === "pesada") { totalKm += delta; veiculosComKm.add(id); }
+      else if (v.linha === "amarela") { totalHoras += delta; veiculosComHoras.add(id); }
+    }
+  });
+  const mediaKmPorVeiculo = veiculosComKm.size > 0 ? totalKm / veiculosComKm.size : 0;
+
+  const dadosFiltrados = dados.filter((d) => (categoria === "todos" || d.veiculos?.linha === categoria) && dentroDoPeriodo(d.registrado_em));
+  const totalLitros = dadosFiltrados.reduce((s, d) => s + (Number(d.litros) || 0), 0);
+  const totalValor = dadosFiltrados.reduce((s, d) => s + (Number(d.valor_total) || 0), 0);
+  const totalAbastecimentos = dadosFiltrados.length;
+  const ticketMedio = totalAbastecimentos > 0 ? totalValor / totalAbastecimentos : 0;
+  const litrosPorHora = totalHoras > 0 ? (dadosFiltrados.filter((d) => d.veiculos?.linha === "amarela").reduce((s, d) => s + (Number(d.litros) || 0), 0)) / totalHoras : 0;
+
+  const porDiaMap = {};
+  dadosFiltrados.forEach((d) => {
+    if (!d.registrado_em) return;
+    const dia = d.registrado_em.slice(0, 10);
+    porDiaMap[dia] = porDiaMap[dia] || { dia, litros: 0, valor: 0 };
+    porDiaMap[dia].litros += Number(d.litros) || 0;
+    porDiaMap[dia].valor += Number(d.valor_total) || 0;
+  });
+  const porDia = Object.values(porDiaMap).sort((a, b) => a.dia.localeCompare(b.dia))
+    .map((d) => ({ ...d, diaLabel: new Date(d.dia + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) }));
+
+  const porVeiculoMap = {};
+  dadosFiltrados.forEach((d) => {
+    const chave = d.veiculos?.placa || d.veiculos?.identificador_interno || "Não identificado";
+    porVeiculoMap[chave] = porVeiculoMap[chave] || { veiculo: chave, litros: 0, valor: 0 };
+    porVeiculoMap[chave].litros += Number(d.litros) || 0;
+    porVeiculoMap[chave].valor += Number(d.valor_total) || 0;
+  });
+  const porVeiculoTop = Object.values(porVeiculoMap).sort((a, b) => b.litros - a.litros).slice(0, 10);
+
+  const porPostoMap = {};
+  dadosFiltrados.forEach((d) => {
+    const chave = d.posto || "Não informado";
+    porPostoMap[chave] = porPostoMap[chave] || { name: chave, value: 0 };
+    porPostoMap[chave].value += Number(d.litros) || 0;
+  });
+  const CORES_PIE = [COLORS.gold, COLORS.ok, COLORS.alert, "#8A94A6", "#6C8EBF", "#B48EAD"];
+  const porPosto = Object.values(porPostoMap).sort((a, b) => b.value - a.value).slice(0, 6)
+    .map((p, i) => ({ ...p, color: CORES_PIE[i % CORES_PIE.length] }));
+
+  const mostrarKm = categoria === "todos" || categoria === "leve" || categoria === "pesada";
+  const mostrarHoras = categoria === "todos" || categoria === "amarela";
+
+  return (
+    <div className="ft-print-area">
+      <div className="ft-no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
+        <div style={{ display: "flex", gap: 6, background: COLORS.surface, borderRadius: 10, padding: 4 }}>
+          {[{ id: "todos", label: "Todos" }, { id: "pesada", label: "Caminhões" }, { id: "leve", label: "Carros" }, { id: "amarela", label: "Máquinas" }].map((c) => (
+            <button key={c.id} onClick={() => setCategoria(c.id)} style={{
+              padding: "6px 14px", borderRadius: 7, border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              background: categoria === c.id ? COLORS.gold : "transparent", color: categoria === c.id ? "#0A0D11" : COLORS.textMuted,
+            }}>{c.label}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6, background: COLORS.surface, borderRadius: 10, padding: 4 }}>
+          {[{ id: "mes_atual", label: "Mês atual" }, { id: "tudo", label: "Tudo" }].map((p) => (
+            <button key={p.id} onClick={() => setPeriodo(p.id)} style={{
+              padding: "6px 14px", borderRadius: 7, border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              background: periodo === p.id ? COLORS.gold : "transparent", color: periodo === p.id ? "#0A0D11" : COLORS.textMuted,
+            }}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 14, marginBottom: 20 }}>
+        <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Total abastecido</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>{totalLitros.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} L</div></Card>
+        <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Total gasto</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>R$ {totalValor.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</div></Card>
+        <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Abastecimentos</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>{totalAbastecimentos}</div></Card>
+        <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Ticket médio</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>R$ {ticketMedio.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</div></Card>
+        {mostrarKm && (
+          <>
+            <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Km rodado</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>{totalKm.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km</div></Card>
+            <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Média km/veículo</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>{mediaKmPorVeiculo.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km</div></Card>
+          </>
+        )}
+        {mostrarHoras && (
+          <>
+            <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Horas trabalhadas</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>{totalHoras.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} h</div></Card>
+            <Card><div style={{ fontSize: 12, color: COLORS.textMuted }}>Litros por hora</div><div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, marginTop: 6 }}>{litrosPorHora.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L/h</div></Card>
+          </>
+        )}
+      </div>
+
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>Consumo por dia (litros)</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={porDia}>
+            <defs>
+              <linearGradient id="fuelDashGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={COLORS.gold} stopOpacity={0.5} />
+                <stop offset="100%" stopColor={COLORS.gold} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke={COLORS.border} vertical={false} />
+            <XAxis dataKey="diaLabel" stroke={COLORS.textMuted} fontSize={11} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <YAxis stroke={COLORS.textMuted} fontSize={11} tickLine={false} axisLine={false} width={40} />
+            <Tooltip contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8 }} />
+            <Area type="monotone" dataKey="litros" stroke={COLORS.gold} fill="url(#fuelDashGrad)" strokeWidth={2} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+        <Card>
+          <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>Top 10 veículos por consumo (litros)</div>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={porVeiculoTop} layout="vertical" margin={{ left: 10 }}>
+              <CartesianGrid stroke={COLORS.border} horizontal={false} />
+              <XAxis type="number" stroke={COLORS.textMuted} fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="veiculo" stroke={COLORS.textMuted} fontSize={11} tickLine={false} axisLine={false} width={70} />
+              <Tooltip contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8 }} />
+              <Bar dataKey="litros" fill={COLORS.gold} radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>Consumo por posto</div>
+          <ResponsiveContainer width="100%" height={280}>
+            <PieChart>
+              <Pie data={porPosto} dataKey="value" nameKey="name" innerRadius={45} outerRadius={90} paddingAngle={3}>
+                {porPosto.map((e, i) => <Cell key={i} fill={e.color} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8 }} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+            {porPosto.map((p) => (
+              <div key={p.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: COLORS.textMuted }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: p.color }} />{p.name}</span>
+                <span>{p.value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} L</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function Combustivel() {
   const { token, veiculos, refresh } = useFleet();
+  const [aba, setAba] = useState("lista"); // 'lista' | 'dashboard'
   const [lista, setLista] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [carregandoMais, setCarregandoMais] = useState(false);
@@ -966,7 +1156,7 @@ function Combustivel() {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/abastecimentos?select=id`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, Prefer: "count=exact", Range: "0-0" },
       });
-      const cr = res.headers.get("content-range"); // ex: "0-0/1135"
+      const cr = res.headers.get("content-range");
       if (cr) setTotal(parseInt(cr.split("/")[1], 10));
     } catch (e) { /* opcional */ }
   }
@@ -1003,53 +1193,78 @@ function Combustivel() {
 
   return (
     <div>
-      <SectionHeader eyebrow="Evoluma Posto" title="Combustível" action={<ImportarCSVCombustivel onImportado={carregar} />} />
-      <Card style={{ marginBottom: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
-          <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
-          <Campo label="Litros"><input style={campoInputStyle} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
-          <Campo label="R$ por litro"><input style={campoInputStyle} type="number" step="0.01" value={form.valor_litro} onChange={(e) => setForm((f) => ({ ...f, valor_litro: e.target.value }))} /></Campo>
-          <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
-          <Campo label="Posto"><input style={campoInputStyle} value={form.posto} onChange={(e) => setForm((f) => ({ ...f, posto: e.target.value }))} /></Campo>
+      <SectionHeader eyebrow="Evoluma Posto" title="Combustível" action={
+        <div className="ft-no-print" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ImportarCSVCombustivel onImportado={carregar} />
+          <button onClick={() => window.print()} style={{
+            background: "none", border: `1px dashed ${COLORS.border}`, borderRadius: 10, color: COLORS.textMuted,
+            padding: "10px 16px", fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
+          }}>
+            <ClipboardList size={14} /> Imprimir
+          </button>
         </div>
-        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
-        <div style={{ marginTop: 14 }}>
-          <GoldButton onClick={registrar}>{saving ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />} {saving ? "Registrando..." : "Registrar abastecimento"}</GoldButton>
-        </div>
-      </Card>
-      <Card>
-        {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
-          <div>
-            <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
-              Mostrando {lista.length}{total !== null ? ` de ${total}` : ""} abastecimentos
+      } />
+
+      <div className="ft-no-print" style={{ display: "flex", gap: 6, marginBottom: 20, background: COLORS.surface, borderRadius: 10, padding: 4, width: "fit-content" }}>
+        {[{ id: "lista", label: "Registro & Lista" }, { id: "dashboard", label: "Dashboard" }].map((t) => (
+          <button key={t.id} onClick={() => setAba(t.id)} style={{
+            padding: "7px 16px", borderRadius: 7, border: "none", fontSize: 13, fontWeight: 600,
+            cursor: "pointer", background: aba === t.id ? COLORS.gold : "transparent",
+            color: aba === t.id ? "#0A0D11" : COLORS.textMuted,
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {aba === "dashboard" ? <DashboardCombustivel /> : (
+        <>
+          <Card style={{ marginBottom: 20 }} className="ft-no-print">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+              <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
+              <Campo label="Litros"><input style={campoInputStyle} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
+              <Campo label="R$ por litro"><input style={campoInputStyle} type="number" step="0.01" value={form.valor_litro} onChange={(e) => setForm((f) => ({ ...f, valor_litro: e.target.value }))} /></Campo>
+              <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
+              <Campo label="Posto"><input style={campoInputStyle} value={form.posto} onChange={(e) => setForm((f) => ({ ...f, posto: e.target.value }))} /></Campo>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
-              <span>Veículo</span><span>Litros</span><span>R$/L</span><span>Total</span><span>Posto</span><span>Data</span>
+            {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
+            <div style={{ marginTop: 14 }}>
+              <GoldButton onClick={registrar}>{saving ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />} {saving ? "Registrando..." : "Registrar abastecimento"}</GoldButton>
             </div>
-            {lista.map((a) => (
-              <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
-                <span>{a.veiculos?.placa || a.veiculos?.identificador_interno || "—"}</span>
-                <span>{a.litros} L</span>
-                <span>R$ {Number(a.valor_litro).toFixed(2)}</span>
-                <span>R$ {Number(a.valor_total).toFixed(2)}</span>
-                <span>{a.posto || "—"}</span>
-                <span>{a.registrado_em ? new Date(a.registrado_em).toLocaleDateString("pt-BR") : "—"}</span>
-              </div>
-            ))}
-            {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhum abastecimento registrado ainda.</div>}
-            {temMais && (
-              <div style={{ marginTop: 14, textAlign: "center" }}>
-                <button onClick={carregarMais} disabled={carregandoMais} style={{
-                  background: "none", border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.textMuted,
-                  padding: "8px 16px", fontSize: 13, cursor: carregandoMais ? "wait" : "pointer",
-                }}>
-                  {carregandoMais ? "Carregando..." : "Carregar mais"}
-                </button>
+          </Card>
+          <Card className="ft-print-area">
+            {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
+              <div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
+                  Mostrando {lista.length}{total !== null ? ` de ${total}` : ""} abastecimentos
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+                  <span>Veículo</span><span>Litros</span><span>R$/L</span><span>Total</span><span>Posto</span><span>Data</span>
+                </div>
+                {lista.map((a) => (
+                  <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                    <span>{a.veiculos?.placa || a.veiculos?.identificador_interno || "—"}</span>
+                    <span>{a.litros} L</span>
+                    <span>R$ {Number(a.valor_litro).toFixed(2)}</span>
+                    <span>R$ {Number(a.valor_total).toFixed(2)}</span>
+                    <span>{a.posto || "—"}</span>
+                    <span>{a.registrado_em ? new Date(a.registrado_em).toLocaleDateString("pt-BR") : "—"}</span>
+                  </div>
+                ))}
+                {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhum abastecimento registrado ainda.</div>}
+                {temMais && (
+                  <div className="ft-no-print" style={{ marginTop: 14, textAlign: "center" }}>
+                    <button onClick={carregarMais} disabled={carregandoMais} style={{
+                      background: "none", border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.textMuted,
+                      padding: "8px 16px", fontSize: 13, cursor: carregandoMais ? "wait" : "pointer",
+                    }}>
+                      {carregandoMais ? "Carregando..." : "Carregar mais"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-      </Card>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
@@ -1611,6 +1826,11 @@ function AppShell() {
         ::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 8px; }
         .ft-spin { animation: ft-spin 1s linear infinite; }
         @keyframes ft-spin { to { transform: rotate(360deg); } }
+        @media print {
+          .ft-sidebar, .ft-bottomnav, header, .ft-no-print { display: none !important; }
+          body, #root, main { background: #fff !important; color: #111 !important; }
+          .ft-print-area { color: #111 !important; }
+        }
       `}</style>
 
       {/* Sidebar (desktop) */}
