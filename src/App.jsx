@@ -9,6 +9,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
   BarChart, Bar, CartesianGrid, PieChart, Pie, Cell
 } from "recharts";
+import Papa from "papaparse";
 
 /* ============================================================
    SUPABASE — conexão via fetch direto ao PostgREST/GoTrue.
@@ -633,6 +634,185 @@ function Campo({ label, children }) {
 }
 const campoInputStyle = { width: "100%", marginTop: 4, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary };
 
+function CAMPOS_ABASTECIMENTO() {
+  return [
+    { key: "placa", label: "Placa / identificador do veículo", obrigatorio: true, palavras: ["placa", "veiculo", "veículo", "identificador"] },
+    { key: "litros", label: "Litros", obrigatorio: true, palavras: ["litro", "qtd", "quantidade"] },
+    { key: "valor_litro", label: "Valor por litro (R$)", obrigatorio: false, palavras: ["valor unit", "preco", "preço", "unitario", "unitário", "r$/l"] },
+    { key: "valor_total", label: "Valor total (R$)", obrigatorio: false, palavras: ["total", "valor total"] },
+    { key: "km_horimetro", label: "Km / Horímetro", obrigatorio: false, palavras: ["km", "hodometro", "hodômetro", "horimetro", "horímetro"] },
+    { key: "posto", label: "Posto", obrigatorio: false, palavras: ["posto", "local"] },
+    { key: "data", label: "Data do abastecimento", obrigatorio: false, palavras: ["data", "dia"] },
+  ];
+}
+
+function adivinharColuna(colunas, palavras) {
+  const achada = colunas.find((c) => palavras.some((p) => c.toLowerCase().includes(p)));
+  return achada || "";
+}
+
+function ImportarCSVCombustivel({ onImportado }) {
+  const { token, veiculos } = useFleet();
+  const [aberto, setAberto] = useState(false);
+  const [colunas, setColunas] = useState([]);
+  const [linhas, setLinhas] = useState([]);
+  const [nomeArquivo, setNomeArquivo] = useState("");
+  const [mapa, setMapa] = useState({});
+  const [importando, setImportando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  const [error, setError] = useState("");
+
+  const campos = CAMPOS_ABASTECIMENTO();
+
+  function lerArquivo(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setNomeArquivo(file.name);
+    setResultado(null);
+    setError("");
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      delimiter: "", // autodetecta ; ou ,
+      complete: (res) => {
+        const cols = res.meta.fields || [];
+        setColunas(cols);
+        setLinhas(res.data);
+        const novoMapa = {};
+        campos.forEach((c) => { novoMapa[c.key] = adivinharColuna(cols, c.palavras); });
+        setMapa(novoMapa);
+      },
+      error: (err) => setError("Não consegui ler o arquivo: " + err.message),
+    });
+  }
+
+  function normalizarPlaca(v) {
+    return (v || "").toString().trim().toUpperCase();
+  }
+  function paraNumero(v) {
+    if (v === undefined || v === null || v === "") return null;
+    const limpo = v.toString().replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
+    const n = parseFloat(limpo);
+    return isNaN(n) ? null : n;
+  }
+
+  async function confirmarImportacao() {
+    if (!mapa.placa || !mapa.litros) { setError("Mapeie pelo menos as colunas de placa e litros."); return; }
+    setImportando(true); setError(""); setResultado(null);
+
+    const veiculosPorPlaca = {};
+    veiculos.forEach((v) => {
+      const chave = normalizarPlaca(v.placa || v.identificador_interno);
+      if (chave) veiculosPorPlaca[chave] = v.id;
+    });
+
+    const payload = [];
+    const semVeiculo = new Set();
+    for (const linha of linhas) {
+      const placa = normalizarPlaca(linha[mapa.placa]);
+      const veiculo_id = veiculosPorPlaca[placa];
+      if (!veiculo_id) { if (placa) semVeiculo.add(placa); continue; }
+      const litros = paraNumero(linha[mapa.litros]);
+      if (!litros) continue;
+      const valor_litro = mapa.valor_litro ? paraNumero(linha[mapa.valor_litro]) : null;
+      let valor_total = mapa.valor_total ? paraNumero(linha[mapa.valor_total]) : null;
+      if (!valor_total && valor_litro) valor_total = litros * valor_litro;
+      payload.push({
+        veiculo_id, litros,
+        valor_litro: valor_litro || 0,
+        valor_total: valor_total || 0,
+        km_horimetro: mapa.km_horimetro ? paraNumero(linha[mapa.km_horimetro]) : null,
+        posto: mapa.posto ? (linha[mapa.posto] || null) : null,
+        fonte_integracao: "evoluma_csv",
+        registrado_em: mapa.data && linha[mapa.data] ? parseDataBR(linha[mapa.data]) : undefined,
+      });
+    }
+
+    try {
+      const tamanhoLote = 200;
+      let inseridos = 0;
+      for (let i = 0; i < payload.length; i += tamanhoLote) {
+        const lote = payload.slice(i, i + tamanhoLote);
+        await sbInsert("abastecimentos", lote, token);
+        inseridos += lote.length;
+      }
+      setResultado({ inseridos, ignorados: linhas.length - payload.length, semVeiculo: Array.from(semVeiculo) });
+      onImportado();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  function parseDataBR(v) {
+    // aceita dd/mm/aaaa ou dd/mm/aaaa hh:mm
+    const m = v.toString().match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!m) return undefined;
+    return new Date(`${m[3]}-${m[2]}-${m[1]}`).toISOString();
+  }
+
+  if (!aberto) {
+    return (
+      <button onClick={() => setAberto(true)} style={{
+        background: "none", border: `1px dashed ${COLORS.border}`, borderRadius: 10, color: COLORS.textMuted,
+        padding: "10px 16px", fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
+      }}>
+        <Link2 size={14} /> Importar CSV do Evoluma
+      </button>
+    );
+  }
+
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>Importar abastecimentos (CSV do Evoluma)</div>
+        <button onClick={() => setAberto(false)} style={{ background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer" }}><X size={18} /></button>
+      </div>
+
+      <input type="file" accept=".csv" onChange={lerArquivo}
+        style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }} />
+
+      {colunas.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
+            {nomeArquivo} — {linhas.length} linhas detectadas. Confirme o mapeamento das colunas:
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 12, marginBottom: 14 }}>
+            {campos.map((c) => (
+              <Campo key={c.key} label={c.label + (c.obrigatorio ? " *" : "")}>
+                <select value={mapa[c.key] || ""} onChange={(e) => setMapa((m) => ({ ...m, [c.key]: e.target.value }))} style={campoInputStyle}>
+                  <option value="">— não usar —</option>
+                  {colunas.map((col) => <option key={col} value={col}>{col}</option>)}
+                </select>
+              </Campo>
+            ))}
+          </div>
+
+          {error && <div style={{ color: COLORS.alert, fontSize: 12, marginBottom: 10 }}>{error}</div>}
+
+          {resultado && (
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 13 }}>
+              <div style={{ color: COLORS.ok, marginBottom: 4 }}>✓ {resultado.inseridos} abastecimentos importados com sucesso.</div>
+              {resultado.ignorados > 0 && <div style={{ color: COLORS.textMuted }}>{resultado.ignorados} linhas ignoradas (sem litros ou veículo não encontrado).</div>}
+              {resultado.semVeiculo.length > 0 && (
+                <div style={{ color: COLORS.gold, marginTop: 6 }}>
+                  Placas não encontradas na frota: {resultado.semVeiculo.slice(0, 15).join(", ")}{resultado.semVeiculo.length > 15 ? "..." : ""}
+                </div>
+              )}
+            </div>
+          )}
+
+          <GoldButton onClick={confirmarImportacao}>
+            {importando ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />}
+            {importando ? "Importando..." : `Confirmar importação (${linhas.length} linhas)`}
+          </GoldButton>
+        </>
+      )}
+    </Card>
+  );
+}
+
 function Combustivel() {
   const { token, veiculos, refresh } = useFleet();
   const [lista, setLista] = useState([]);
@@ -671,7 +851,7 @@ function Combustivel() {
 
   return (
     <div>
-      <SectionHeader eyebrow="Evoluma Posto" title="Combustível" />
+      <SectionHeader eyebrow="Evoluma Posto" title="Combustível" action={<ImportarCSVCombustivel onImportado={carregar} />} />
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
           <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
