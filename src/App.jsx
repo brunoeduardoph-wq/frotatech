@@ -610,85 +610,307 @@ function Socorro() {
   );
 }
 
-function SimpleTable({ eyebrow, title, columns, rows, action }) {
+function SeletorVeiculo({ value, onChange }) {
+  const { veiculos } = useFleet();
+  return (
+    <select value={value} onChange={onChange}
+      style={{ width: "100%", marginTop: 4, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary }}>
+      <option value="">Selecione um veículo</option>
+      {veiculos.map((v) => (
+        <option key={v.id} value={v.id}>{v.placa || v.identificador_interno} — {v.categoria}</option>
+      ))}
+    </select>
+  );
+}
+
+function Campo({ label, children }) {
   return (
     <div>
-      <SectionHeader eyebrow={eyebrow} title={title} action={action} />
-      <Card>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns.length}, 1fr)`, fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
-          {columns.map((c) => <span key={c}>{c}</span>)}
+      <label style={{ fontSize: 12, color: COLORS.textMuted }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+const campoInputStyle = { width: "100%", marginTop: 4, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary };
+
+function Combustivel() {
+  const { token, veiculos, refresh } = useFleet();
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [form, setForm] = useState({ veiculo_id: "", litros: "", valor_litro: "", posto: "", km_horimetro: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      const dados = await sbSelect("abastecimentos", "select=id,litros,valor_litro,valor_total,posto,registrado_em,veiculos(placa,identificador_interno)&order=registrado_em.desc&limit=50", token);
+      setLista(dados);
+    } catch (e) { /* silencioso */ } finally { setCarregando(false); }
+  }
+  useEffect(() => { carregar(); }, []);
+
+  async function registrar(e) {
+    e.preventDefault();
+    if (!form.veiculo_id || !form.litros) { setError("Selecione o veículo e informe os litros."); return; }
+    setSaving(true); setError("");
+    try {
+      const litros = parseFloat(form.litros);
+      const valor_litro = parseFloat(form.valor_litro || 0);
+      await sbInsert("abastecimentos", [{
+        veiculo_id: form.veiculo_id,
+        litros, valor_litro,
+        valor_total: litros * valor_litro,
+        km_horimetro: form.km_horimetro ? parseFloat(form.km_horimetro) : null,
+        posto: form.posto || null,
+      }], token);
+      setForm({ veiculo_id: "", litros: "", valor_litro: "", posto: "", km_horimetro: "" });
+      carregar();
+    } catch (e) { setError(e.message); } finally { setSaving(false); }
+  }
+
+  return (
+    <div>
+      <SectionHeader eyebrow="Evoluma Posto" title="Combustível" />
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+          <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
+          <Campo label="Litros"><input style={campoInputStyle} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
+          <Campo label="R$ por litro"><input style={campoInputStyle} type="number" step="0.01" value={form.valor_litro} onChange={(e) => setForm((f) => ({ ...f, valor_litro: e.target.value }))} /></Campo>
+          <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
+          <Campo label="Posto"><input style={campoInputStyle} value={form.posto} onChange={(e) => setForm((f) => ({ ...f, posto: e.target.value }))} /></Campo>
         </div>
-        {rows.map((row, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: `repeat(${columns.length}, 1fr)`, padding: "12px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
-            {row.map((cell, j) => <span key={j}>{cell}</span>)}
+        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
+        <div style={{ marginTop: 14 }}>
+          <GoldButton onClick={registrar}>{saving ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />} {saving ? "Registrando..." : "Registrar abastecimento"}</GoldButton>
+        </div>
+      </Card>
+      <Card>
+        {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>Veículo</span><span>Litros</span><span>R$/L</span><span>Total</span><span>Posto</span>
+            </div>
+            {lista.map((a) => (
+              <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                <span>{a.veiculos?.placa || a.veiculos?.identificador_interno || "—"}</span>
+                <span>{a.litros} L</span>
+                <span>R$ {Number(a.valor_litro).toFixed(2)}</span>
+                <span>R$ {Number(a.valor_total).toFixed(2)}</span>
+                <span>{a.posto || "—"}</span>
+              </div>
+            ))}
+            {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhum abastecimento registrado ainda.</div>}
           </div>
-        ))}
+        )}
       </Card>
     </div>
   );
 }
 
-function Combustivel() {
-  return (
-    <SimpleTable
-      eyebrow="Evoluma Posto"
-      title="Abastecimentos"
-      action={<GoldButton><Plus size={15} /> Registrar</GoldButton>}
-      columns={["Veículo", "Litros", "R$/L", "Total", "Posto"]}
-      rows={[
-        ["QCT-4471", "180 L", "R$ 5,89", "R$ 1.060,20", "Posto Rodovia BR-101"],
-        ["RTX-8820", "62 L", "R$ 6,05", "R$ 375,10", "Posto Central"],
-        ["PVL-0092", "310 L", "R$ 5,79", "R$ 1.794,90", "Posto Rodovia BR-101"],
-      ]}
-    />
-  );
-}
-
 function Pneus() {
+  const { token } = useFleet();
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [form, setForm] = useState({ numero_fogo: "", marca: "", modelo: "", medida: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      const dados = await sbSelect("pneus", "select=id,numero_fogo,marca,modelo,medida,status&order=numero_fogo.asc&limit=100", token);
+      setLista(dados);
+    } catch (e) { /* silencioso */ } finally { setCarregando(false); }
+  }
+  useEffect(() => { carregar(); }, []);
+
+  async function registrar(e) {
+    e.preventDefault();
+    if (!form.numero_fogo) { setError("Informe o número de fogo."); return; }
+    setSaving(true); setError("");
+    try {
+      await sbInsert("pneus", [{ numero_fogo: form.numero_fogo, marca: form.marca || null, modelo: form.modelo || null, medida: form.medida || null, status: "novo" }], token);
+      setForm({ numero_fogo: "", marca: "", modelo: "", medida: "" });
+      carregar();
+    } catch (e) { setError(e.message); } finally { setSaving(false); }
+  }
+
+  const statusColor = { novo: COLORS.ok, em_uso: COLORS.gold, recapado: COLORS.textMuted, sucata: COLORS.alert };
+
   return (
-    <SimpleTable
-      eyebrow="Controle"
-      title="Pneus"
-      action={<GoldButton><Plus size={15} /> Cadastrar pneu</GoldButton>}
-      columns={["Fogo", "Veículo", "Posição", "Sulco (mm)", "Status"]}
-      rows={[
-        ["FG-00231", "QCT-4471", "Diant. esquerdo", "9,2", "Em uso"],
-        ["FG-00187", "QCT-4471", "Diant. direito", "4,8", "Atenção"],
-        ["FG-00099", "RTX-8820", "Traseiro esq.", "11,0", "Novo"],
-      ]}
-    />
+    <div>
+      <SectionHeader eyebrow="Controle" title="Pneus" />
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+          <Campo label="Número de fogo"><input style={campoInputStyle} value={form.numero_fogo} onChange={(e) => setForm((f) => ({ ...f, numero_fogo: e.target.value }))} /></Campo>
+          <Campo label="Marca"><input style={campoInputStyle} value={form.marca} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} /></Campo>
+          <Campo label="Modelo"><input style={campoInputStyle} value={form.modelo} onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))} /></Campo>
+          <Campo label="Medida"><input style={campoInputStyle} value={form.medida} onChange={(e) => setForm((f) => ({ ...f, medida: e.target.value }))} /></Campo>
+        </div>
+        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
+        <div style={{ marginTop: 14 }}>
+          <GoldButton onClick={registrar}>{saving ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />} {saving ? "Cadastrando..." : "Cadastrar pneu"}</GoldButton>
+        </div>
+      </Card>
+      <Card>
+        {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>Fogo</span><span>Marca</span><span>Modelo</span><span>Medida</span><span>Status</span>
+            </div>
+            {lista.map((p) => (
+              <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{p.numero_fogo}</span>
+                <span>{p.marca || "—"}</span>
+                <span>{p.modelo || "—"}</span>
+                <span>{p.medida || "—"}</span>
+                <Badge color={statusColor[p.status] || COLORS.textMuted}>{p.status}</Badge>
+              </div>
+            ))}
+            {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhum pneu cadastrado ainda.</div>}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
 function Lubrificacao() {
+  const { token } = useFleet();
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [form, setForm] = useState({ veiculo_id: "", produto_utilizado: "", km_horimetro: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      const dados = await sbSelect("lubrificacoes", "select=id,produto_utilizado,km_horimetro,registrado_em,veiculos(placa,identificador_interno)&order=registrado_em.desc&limit=50", token);
+      setLista(dados);
+    } catch (e) { /* silencioso */ } finally { setCarregando(false); }
+  }
+  useEffect(() => { carregar(); }, []);
+
+  async function registrar(e) {
+    e.preventDefault();
+    if (!form.veiculo_id || !form.produto_utilizado) { setError("Selecione o veículo e informe o produto."); return; }
+    setSaving(true); setError("");
+    try {
+      await sbInsert("lubrificacoes", [{
+        veiculo_id: form.veiculo_id,
+        produto_utilizado: form.produto_utilizado,
+        km_horimetro: form.km_horimetro ? parseFloat(form.km_horimetro) : null,
+      }], token);
+      setForm({ veiculo_id: "", produto_utilizado: "", km_horimetro: "" });
+      carregar();
+    } catch (e) { setError(e.message); } finally { setSaving(false); }
+  }
+
   return (
-    <SimpleTable
-      eyebrow="PCM"
-      title="Lubrificação"
-      action={<GoldButton><Plus size={15} /> Registrar aplicação</GoldButton>}
-      columns={["Veículo", "Ponto", "Produto", "Última aplicação", "Status"]}
-      rows={[
-        ["PVL-0092", "Óleo hidráulico", "ISO VG 68", "12/07/2026", "Em dia"],
-        ["QCT-5563", "Pontos de engraxamento", "Graxa EP2", "02/06/2026", "Atrasado"],
-        ["QCT-1187", "Óleo do motor", "15W-40", "20/07/2026", "Em dia"],
-      ]}
-    />
+    <div>
+      <SectionHeader eyebrow="PCM" title="Lubrificação" />
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+          <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
+          <Campo label="Produto utilizado"><input style={campoInputStyle} value={form.produto_utilizado} onChange={(e) => setForm((f) => ({ ...f, produto_utilizado: e.target.value }))} /></Campo>
+          <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
+        </div>
+        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
+        <div style={{ marginTop: 14 }}>
+          <GoldButton onClick={registrar}>{saving ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />} {saving ? "Registrando..." : "Registrar aplicação"}</GoldButton>
+        </div>
+      </Card>
+      <Card>
+        {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>Veículo</span><span>Produto</span><span>Km/Horímetro</span><span>Data</span>
+            </div>
+            {lista.map((l) => (
+              <div key={l.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                <span>{l.veiculos?.placa || l.veiculos?.identificador_interno || "—"}</span>
+                <span>{l.produto_utilizado}</span>
+                <span>{l.km_horimetro ?? "—"}</span>
+                <span>{new Date(l.registrado_em).toLocaleDateString("pt-BR")}</span>
+              </div>
+            ))}
+            {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhuma lubrificação registrada ainda.</div>}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
 function Inspecoes() {
+  const { token } = useFleet();
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [form, setForm] = useState({ veiculo_id: "", tipo: "", nota_geral: "", km_horimetro: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      const dados = await sbSelect("inspecoes", "select=id,tipo,nota_geral,km_horimetro,data_inspecao,veiculos(placa,identificador_interno)&order=data_inspecao.desc&limit=50", token);
+      setLista(dados);
+    } catch (e) { /* silencioso */ } finally { setCarregando(false); }
+  }
+  useEffect(() => { carregar(); }, []);
+
+  async function registrar(e) {
+    e.preventDefault();
+    if (!form.veiculo_id || !form.tipo) { setError("Selecione o veículo e informe o tipo de inspeção."); return; }
+    setSaving(true); setError("");
+    try {
+      await sbInsert("inspecoes", [{
+        veiculo_id: form.veiculo_id,
+        tipo: form.tipo,
+        nota_geral: form.nota_geral ? parseFloat(form.nota_geral) : null,
+        km_horimetro: form.km_horimetro ? parseFloat(form.km_horimetro) : null,
+      }], token);
+      setForm({ veiculo_id: "", tipo: "", nota_geral: "", km_horimetro: "" });
+      carregar();
+    } catch (e) { setError(e.message); } finally { setSaving(false); }
+  }
+
   return (
-    <SimpleTable
-      eyebrow="Campo · quinzenal"
-      title="Inspeções"
-      action={<GoldButton><Plus size={15} /> Agendar inspeção</GoldButton>}
-      columns={["Veículo", "Inspetor", "Data", "Nota", "Status"]}
-      rows={[
-        ["PVL-0092", "Branquinho", "28/07/2026", "9,2", "Concluída"],
-        ["QCT-5563", "Branquinho", "30/07/2026", "—", "Agendada"],
-        ["QCT-1187", "Teodoro", "26/07/2026", "7,8", "Concluída"],
-      ]}
-    />
+    <div>
+      <SectionHeader eyebrow="Campo" title="Inspeções" />
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+          <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
+          <Campo label="Tipo de inspeção"><input style={campoInputStyle} placeholder="ex: quinzenal_maquinas_pesadas" value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))} /></Campo>
+          <Campo label="Nota geral (0-10)"><input style={campoInputStyle} type="number" step="0.1" value={form.nota_geral} onChange={(e) => setForm((f) => ({ ...f, nota_geral: e.target.value }))} /></Campo>
+          <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
+        </div>
+        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
+        <div style={{ marginTop: 14 }}>
+          <GoldButton onClick={registrar}>{saving ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />} {saving ? "Registrando..." : "Registrar inspeção"}</GoldButton>
+        </div>
+      </Card>
+      <Card>
+        {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>Veículo</span><span>Tipo</span><span>Nota</span><span>Data</span>
+            </div>
+            {lista.map((i) => (
+              <div key={i.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                <span>{i.veiculos?.placa || i.veiculos?.identificador_interno || "—"}</span>
+                <span>{i.tipo}</span>
+                <span>{i.nota_geral ?? "—"}</span>
+                <span>{new Date(i.data_inspecao).toLocaleDateString("pt-BR")}</span>
+              </div>
+            ))}
+            {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhuma inspeção registrada ainda.</div>}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
