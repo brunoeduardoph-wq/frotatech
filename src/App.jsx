@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, createContext, useContext } from "react";
 import {
   ClipboardCheck, Wrench, Siren, Fuel, CircleDot, Droplets,
-  ClipboardList, LayoutDashboard, Sparkles, ChevronRight, ChevronLeft, Plus,
+  ClipboardList, LayoutDashboard, Sparkles, ChevronRight, ChevronLeft, ChevronDown, Plus, Menu,
   MapPin, Clock, AlertTriangle, CheckCircle2, XCircle, Gauge,
   Truck, Search, Bell, Settings, X, Link2, RefreshCw, LogOut, Loader2, UserPlus, Lock
 } from "lucide-react";
@@ -2205,29 +2205,95 @@ const SCREENS = {
   funcionarios: CadastroFuncionario,
 };
 
+const MODULE_ROLE_LABEL = { motorista: "Motorista", operador: "Operador", mecanico: "Mecânico", supervisor: "Supervisor", gestor: "Gestor de Frota", admin: "Administrador" };
+
+const MODULE_INFO = {
+  dashboard: { desc: "Visão geral da frota em tempo real.", cta: "Ver painel" },
+  checklist: { desc: "Inspeção de início e fim de turno.", cta: "Realizar um checklist" },
+  manutencao: { desc: "Ordens de serviço e reparos.", cta: "Ver ordens de serviço", stat: (f) => ({ valor: f.osList.length, label: "OS abertas", alerta: f.osList.length > 0 }) },
+  socorro: { desc: "Botão de pânico e chamados no campo.", cta: "Ver chamados", stat: (f) => ({ valor: f.sosList.length, label: "chamado(s) ativo(s)", alerta: f.sosList.length > 0 }) },
+  combustivel: { desc: "Abastecimentos e notas de compra.", cta: "Registrar abastecimento" },
+  pneus: { desc: "Controle de desgaste e recapagem.", cta: "Ver pneus" },
+  lubrificacao: { desc: "Aplicações de graxa e óleo.", cta: "Ver lubrificação" },
+  inspecoes: { desc: "Inspeções periódicas de campo.", cta: "Ver inspeções" },
+  ia: { desc: "Alertas e integrações automáticas.", cta: "Ver alertas" },
+  funcionarios: { desc: "Cadastro de motoristas e operadores.", cta: "Gerenciar funcionários" },
+};
+
 function ModuleHub({ onSelect, isAdmin }) {
   const fleet = useFleet();
+  const primeiroNome = fleet.profile?.full_name?.split(" ")[0] || "colaborador";
+  const nomeCompleto = fleet.profile?.full_name || fleet.user?.email?.split("@")[0] || "Usuário";
+  const roleLabel = MODULE_ROLE_LABEL[fleet.profile?.role] || fleet.profile?.role || "";
+
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, letterSpacing: 1.5, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 4 }}>
-          Olá, {fleet.profile?.full_name?.split(" ")[0] || "colaborador"}
+      <div style={{
+        background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 14,
+        padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 11, background: COLORS.gold, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Truck size={22} color="#0A0D11" />
+          </div>
+          <div>
+            <div style={{ fontSize: 12.5, color: COLORS.textMuted }}>Olá,</div>
+            <div style={{ fontSize: 15.5, fontWeight: 700, color: COLORS.textPrimary, fontFamily: "'Space Grotesk', sans-serif" }}>{nomeCompleto}</div>
+            {roleLabel && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>{roleLabel}</div>}
+          </div>
         </div>
-        <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, margin: 0, color: COLORS.textPrimary }}>O que você precisa hoje?</h2>
+        <ChevronDown size={18} color={COLORS.textMuted} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-        {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
-          <button key={n.id} onClick={() => onSelect(n.id)} style={{
-            background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 14,
-            padding: "20px 14px", display: "flex", flexDirection: "column", alignItems: "flex-start",
-            gap: 10, cursor: "pointer", textAlign: "left",
-          }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: `${COLORS.gold}1A`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <n.icon size={19} color={COLORS.gold} />
+
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, margin: 0, color: COLORS.textPrimary }}>Por onde começar</h2>
+        <p style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 4 }}>As principais atividades da sua rotina, {primeiroNome}.</p>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, marginLeft: -24, marginRight: -24, paddingLeft: 24, paddingRight: 24, scrollSnapType: "x proximity" }}>
+        {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => {
+          const info = MODULE_INFO[n.id] || {};
+          const stat = info.stat ? info.stat(fleet) : null;
+          return (
+            <div key={n.id} style={{
+              flex: "0 0 auto", width: 240, scrollSnapAlign: "start",
+              background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 18,
+              display: "flex", flexDirection: "column", gap: 12,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <n.icon size={18} color={COLORS.gold} />
+                  <span style={{ fontSize: 14.5, fontWeight: 700, color: COLORS.textPrimary }}>{n.label}</span>
+                </div>
+              </div>
+
+              {stat ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
+                    background: stat.alerta ? `${COLORS.gold}22` : `${COLORS.ok}1A`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {stat.alerta ? <AlertTriangle size={18} color={COLORS.gold} /> : <CheckCircle2 size={18} color={COLORS.ok} />}
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 26, lineHeight: 1, color: COLORS.textPrimary }}>{stat.valor}</div>
+                    <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 2 }}>{stat.label}</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.5, minHeight: 34 }}>{info.desc}</div>
+              )}
+
+              <button onClick={() => onSelect(n.id)} style={{
+                background: COLORS.gold, color: "#0A0D11", border: "none", borderRadius: 10,
+                padding: "10px 12px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: "auto",
+              }}>
+                {info.cta || `Abrir ${n.label}`}
+              </button>
             </div>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: COLORS.textPrimary }}>{n.label}</span>
-          </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -2236,6 +2302,7 @@ function ModuleHub({ onSelect, isAdmin }) {
 function AppShell() {
   const isMobile = useResponsiveTheme();
   const [active, setActive] = useState(() => (isMobile ? null : "dashboard"));
+  const [menuAberto, setMenuAberto] = useState(false);
   const fleet = useFleet();
   const Screen = active ? SCREENS[active] : null;
 
@@ -2290,16 +2357,21 @@ function AppShell() {
       <main style={{ flex: 1, minWidth: 0 }}>
         <header style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "16px 24px", borderBottom: `1px solid ${COLORS.border}`,
+          padding: "16px 24px", borderBottom: `1px solid ${COLORS.border}`, position: "relative",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: COLORS.textMuted, fontSize: 13 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, color: COLORS.textMuted, fontSize: 13 }}>
+            {isMobile && (
+              <button onClick={() => setMenuAberto((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }}>
+                <Menu size={21} color={COLORS.textPrimary} />
+              </button>
+            )}
             {isMobile && active !== null ? (
               <button onClick={() => setActive(null)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: COLORS.textPrimary, fontSize: 15, fontWeight: 600, padding: 0 }}>
                 <ChevronLeft size={19} /> {NAV.find((n) => n.id === active)?.label}
               </button>
-            ) : (
+            ) : !isMobile ? (
               <><Search size={15} /> Buscar veículo, OS, motorista...</>
-            )}
+            ) : null}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Bell size={17} color={COLORS.textMuted} />
@@ -2310,6 +2382,36 @@ function AppShell() {
             </button>
           </div>
         </header>
+
+        {menuAberto && (
+          <>
+            <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }} />
+            <div style={{
+              position: "fixed", top: 62, left: 12, right: 12, zIndex: 50,
+              background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 14,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.3)", padding: 8, maxHeight: "70vh", overflowY: "auto",
+            }}>
+              <button onClick={() => { setActive(null); setMenuAberto(false); }} style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "12px 12px", borderRadius: 10,
+                background: active === null ? `${COLORS.gold}1A` : "none", border: "none",
+                color: active === null ? COLORS.gold : COLORS.textPrimary, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left",
+              }}>
+                <LayoutDashboard size={18} /> Início
+              </button>
+              {NAV.filter((n) => !n.adminOnly || fleet.isAdmin).map((n) => (
+                <button key={n.id} onClick={() => { setActive(n.id); setMenuAberto(false); }} style={{
+                  display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "12px 12px", borderRadius: 10,
+                  background: active === n.id ? `${COLORS.gold}1A` : "none", border: "none",
+                  color: active === n.id ? COLORS.gold : COLORS.textPrimary, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left",
+                }}>
+                  <n.icon size={18} />
+                  {n.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
         <div style={{ padding: "24px 24px 90px 24px", maxWidth: 1100 }}>
           {isMobile && active === null ? (
             <ModuleHub onSelect={setActive} isAdmin={fleet.isAdmin} />
