@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, createContext, useContext } from "react";
 import {
   ClipboardCheck, Wrench, Siren, Fuel, CircleDot, Droplets,
-  ClipboardList, LayoutDashboard, Sparkles, ChevronRight, Plus,
+  ClipboardList, LayoutDashboard, Sparkles, ChevronRight, ChevronLeft, Plus,
   MapPin, Clock, AlertTriangle, CheckCircle2, XCircle, Gauge,
   Truck, Search, Bell, Settings, X, Link2, RefreshCw, LogOut, Loader2, UserPlus, Lock
 } from "lucide-react";
@@ -2205,11 +2205,39 @@ const SCREENS = {
   funcionarios: CadastroFuncionario,
 };
 
-function AppShell() {
-  useResponsiveTheme();
-  const [active, setActive] = useState("dashboard");
+function ModuleHub({ onSelect, isAdmin }) {
   const fleet = useFleet();
-  const Screen = SCREENS[active];
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, letterSpacing: 1.5, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 4 }}>
+          Olá, {fleet.profile?.full_name?.split(" ")[0] || "colaborador"}
+        </div>
+        <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, margin: 0, color: COLORS.textPrimary }}>O que você precisa hoje?</h2>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+        {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
+          <button key={n.id} onClick={() => onSelect(n.id)} style={{
+            background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 14,
+            padding: "20px 14px", display: "flex", flexDirection: "column", alignItems: "flex-start",
+            gap: 10, cursor: "pointer", textAlign: "left",
+          }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: `${COLORS.gold}1A`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <n.icon size={19} color={COLORS.gold} />
+            </div>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: COLORS.textPrimary }}>{n.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AppShell() {
+  const isMobile = useResponsiveTheme();
+  const [active, setActive] = useState(() => (isMobile ? null : "dashboard"));
+  const fleet = useFleet();
+  const Screen = active ? SCREENS[active] : null;
 
   return (
     <div style={{
@@ -2265,7 +2293,13 @@ function AppShell() {
           padding: "16px 24px", borderBottom: `1px solid ${COLORS.border}`,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: COLORS.textMuted, fontSize: 13 }}>
-            <Search size={15} /> Buscar veículo, OS, motorista...
+            {isMobile && active !== null ? (
+              <button onClick={() => setActive(null)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: COLORS.textPrimary, fontSize: 15, fontWeight: 600, padding: 0 }}>
+                <ChevronLeft size={19} /> {NAV.find((n) => n.id === active)?.label}
+              </button>
+            ) : (
+              <><Search size={15} /> Buscar veículo, OS, motorista...</>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Bell size={17} color={COLORS.textMuted} />
@@ -2277,7 +2311,9 @@ function AppShell() {
           </div>
         </header>
         <div style={{ padding: "24px 24px 90px 24px", maxWidth: 1100 }}>
-          {fleet.loading ? (
+          {isMobile && active === null ? (
+            <ModuleHub onSelect={setActive} isAdmin={fleet.isAdmin} />
+          ) : fleet.loading ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, color: COLORS.textMuted, fontSize: 13 }}>
               <Loader2 size={16} className="ft-spin" /> Carregando dados da frota...
             </div>
