@@ -2443,7 +2443,7 @@ function AppShell() {
 
       <style>{`
         @media (max-width: 780px) {
-          .ft-sidebar { display: none; }
+          .ft-sidebar { display: none !important; }
           .ft-bottomnav { display: flex !important; }
         }
       `}</style>
