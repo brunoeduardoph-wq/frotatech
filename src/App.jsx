@@ -424,126 +424,60 @@ function Checklist() {
     }
   }
 
- function parseObservacoes(texto) {
-  if (!texto) return [];
-  return texto.split(" | ").map((parte) => {
-    const [itemStatus, resto] = parte.split(": ");
-    const status = resto ? resto.split(" — ")[0].split(" [foto:")[0].trim() : "";
-    const temFoto = parte.match(/\[foto: (.*?)\]/);
-    const semFoto = parte.replace(/\[foto: .*?\]/, "").trim();
-    const observacao = semFoto.includes(" — ") ? semFoto.split(" — ").slice(1).join(" — ").trim() : "";
-    return { item: itemStatus, status, observacao, foto: temFoto ? temFoto[1] : null };
-  });
-}
-
-function ChecklistsRealizados({ token }) {
-  const [dados, setDados] = useState([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState("");
-  const [busca, setBusca] = useState("");
-  const [filtroTipo, setFiltroTipo] = useState("todos");
-  const [filtroStatus, setFiltroStatus] = useState("todos");
-  const [expandido, setExpandido] = useState(null);
-
-  useEffect(() => {
-    setCarregando(true);
-    sbSelect("checklists", "select=*,veiculos(placa,identificador_interno,categoria),profiles(full_name)&order=criado_em.desc&limit=200", token)
-      .then((data) => { setDados(data || []); setCarregando(false); })
-      .catch((e) => { setErro(e.message); setCarregando(false); });
-  }, [token]);
-
-  const filtrados = dados.filter((c) => {
-    const placa = c.veiculos?.placa || c.veiculos?.identificador_interno || "";
-    const nome = c.profiles?.full_name || "";
-    const buscaOk = !busca || placa.toLowerCase().includes(busca.toLowerCase()) || nome.toLowerCase().includes(busca.toLowerCase());
-    const tipoOk = filtroTipo === "todos" || c.tipo === filtroTipo;
-    const statusOk = filtroStatus === "todos" || (filtroStatus === "aprovado" ? c.aprovado : !c.aprovado);
-    return buscaOk && tipoOk && statusOk;
-  });
-
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        <input
-          placeholder="Buscar placa ou colaborador..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          style={{
-            flex: "1 1 200px", background: COLORS.surface, border: `1px solid ${COLORS.border}`,
-            borderRadius: 8, padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
-          }}
-        />
-        <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} style={{
-          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
-          padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
-        }}>
-          <option value="todos">Todos os tipos</option>
-          <option value="inicio_turno">Início de turno</option>
-          <option value="fim_turno">Fim de turno</option>
-        </select>
-        <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{
-          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
-          padding: "10px 12px", color: COLORS.textPrimary, fontSize: 13,
-        }}>
-          <option value="todos">Todos os status</option>
-          <option value="aprovado">Aprovado</option>
-          <option value="critico">Com item crítico</option>
-        </select>
-      </div>
-
-      {carregando && <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div>}
-      {erro && <div style={{ color: COLORS.alert, fontSize: 13 }}>{erro}</div>}
-
-      {!carregando && !erro && (
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr 130px 90px 60px", gap: 8, padding: "10px 14px", borderBottom: `1px solid ${COLORS.border}`, fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            <span>Placa</span>
-            <span>Tipo</span>
-            <span>Colaborador</span>
-            <span>Data envio</span>
-            <span>Status</span>
-            <span></span>
+      <SectionHeader
+        eyebrow="Operação"
+        title="Checklist"
+        action={
+          <div style={{ display: "flex", gap: 6, background: COLORS.surface, borderRadius: 10, padding: 4 }}>
+            <button onClick={() => setModo("novo")} style={{ padding: "7px 16px", borderRadius: 7, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", background: modo === "novo" ? COLORS.gold : "transparent", color: modo === "novo" ? "#0A0D11" : COLORS.textMuted }}>Novo</button>
+            <button onClick={() => setModo("realizados")} style={{ padding: "7px 16px", borderRadius: 7, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", background: modo === "realizados" ? COLORS.gold : "transparent", color: modo === "realizados" ? "#0A0D11" : COLORS.textMuted }}>Realizados</button>
           </div>
-          {filtrados.map((c) => {
-            const itensDetalhados = parseObservacoes(c.observacoes_gerais);
-            const abertos = itensDetalhados.filter((i) => i.status === "atencao" || i.status === "critico");
-            const aberto = expandido === c.id;
-            return (
-              <div key={c.id}>
-                <div style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr 130px 90px 60px", gap: 8, padding: "12px 14px", borderBottom: `1px solid ${COLORS.border}`, alignItems: "center", fontSize: 13 }}>
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", color: COLORS.textPrimary }}>{c.veiculos?.placa || c.veiculos?.identificador_interno || "—"}</span>
-                  <span style={{ color: COLORS.textMuted }}>{c.tipo === "inicio_turno" ? "Início" : c.tipo === "fim_turno" ? "Fim" : "—"}</span>
-                  <span style={{ color: COLORS.textPrimary }}>{c.profiles?.full_name || "—"}</span>
-                  <span style={{ color: COLORS.textMuted, fontSize: 12 }}>{c.criado_em ? new Date(c.criado_em).toLocaleString("pt-BR") : "—"}</span>
-                  <span style={{
-                    color: c.aprovado ? COLORS.ok : COLORS.alert, fontSize: 12, fontWeight: 700,
-                    display: "flex", alignItems: "center", gap: 4,
-                  }}>
-                    {c.aprovado ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-                    {c.aprovado ? "OK" : "Crítico"}
-                  </span>
-                  <button onClick={() => setExpandido(aberto ? null : c.id)} style={{ background: "none", border: "none", color: COLORS.gold, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                    {aberto ? "Fechar" : "Ver mais"}
-                  </button>
-                </div>
-                {aberto && (
-                  <div style={{ padding: "12px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}` }}>
-                    {abertos.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted }}>Nenhum item de atenção ou crítico registrado.</div>}
-                    {abertos.map((i, idx) => (
-                      <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", borderBottom: idx < abertos.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
-                        {i.foto && <img src={i.foto} alt="" style={{ width: 56, height: 56, borderRadius: 6, objectFit: "cover" }} />}
-                        <div>
-                          <div style={{ fontSize: 13, color: COLORS.textPrimary, fontWeight: 600 }}>{i.item} — <span style={{ color: i.status === "critico" ? COLORS.alert : COLORS.gold }}>{i.status}</span></div>
-                          {i.observacao && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{i.observacao}</div>}
-                        </div>
-                      </div>
+        }
+      />
+      {modo === "realizados" ? (
+        <ChecklistsRealizados token={token} />
+      ) : saved ? (
+        <Card>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: COLORS.ok }}>
+            <CheckCircle2 size={20} /> Checklist enviado com sucesso.
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <GoldButton onClick={() => { setSaved(false); setSelected(null); setRespostas({}); }}>Novo checklist</GoldButton>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <Campo label="Veículo">
+            <SeletorVeiculo value={selected?.id || ""} onChange={(e) => setSelected(veiculos.find((v) => v.id === e.target.value) || null)} />
+          </Campo>
+          {selected && (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              {itens.map((item) => (
+                <div key={item} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}` }}>
+                  <span style={{ fontSize: 13 }}>{item}</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[{ v: "ok", label: "OK", color: COLORS.ok }, { v: "atencao", label: "Atenção", color: COLORS.gold }, { v: "critico", label: "Crítico", color: COLORS.alert }].map((op) => (
+                      <button key={op.v} onClick={() => setRespostas((r) => ({ ...r, [item]: op.v }))} style={{
+                        padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                        border: `1px solid ${respostas[item] === op.v ? op.color : COLORS.border}`,
+                        background: respostas[item] === op.v ? `${op.color}22` : "transparent",
+                        color: respostas[item] === op.v ? op.color : COLORS.textMuted,
+                      }}>{op.label}</button>
                     ))}
                   </div>
-                )}
+                </div>
+              ))}
+              {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
+              <div style={{ marginTop: 10 }}>
+                <GoldButton onClick={concluir}>
+                  {saving ? <Loader2 size={15} className="ft-spin" /> : <CheckCircle2 size={15} />}
+                  {saving ? "Enviando..." : "Concluir checklist"}
+                </GoldButton>
               </div>
-            );
-          })}
-          {filtrados.length === 0 && <div style={{ padding: 20, textAlign: "center", color: COLORS.textMuted, fontSize: 13 }}>Nenhum checklist encontrado com esses filtros.</div>}
+            </div>
+          )}
         </Card>
       )}
     </div>
@@ -1303,14 +1237,125 @@ function DashboardCombustivel() {
   );
 }
 
+const MESES_NOMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+function NotasCompraDiesel({ mes, ano, onMesChange, onAnoChange, onMediaChange }) {
+  const { token } = useFleet();
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [form, setForm] = useState({ data_nota: "", litros: "", valor_total: "", fornecedor: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      const dados = await sbSelect("notas_compra_diesel", "select=*&order=data_nota.desc&limit=500", token);
+      setLista(dados);
+    } catch (e) { /* silencioso */ } finally { setCarregando(false); }
+  }
+  useEffect(() => { carregar(); }, []);
+
+  async function registrar(e) {
+    e.preventDefault();
+    if (!form.data_nota || !form.litros || !form.valor_total) { setError("Preencha data, litros e valor total."); return; }
+    setSaving(true); setError("");
+    try {
+      await sbInsert("notas_compra_diesel", [{
+        data_nota: form.data_nota,
+        litros: parseFloat(form.litros),
+        valor_total: parseFloat(form.valor_total),
+        fornecedor: form.fornecedor || null,
+      }], token);
+      setForm({ data_nota: "", litros: "", valor_total: "", fornecedor: "" });
+      carregar();
+    } catch (e) { setError(e.message); } finally { setSaving(false); }
+  }
+
+  const notasFiltradas = lista.filter((n) => {
+    const d = new Date(n.data_nota + "T00:00:00");
+    return d.getFullYear() === ano && d.getMonth() + 1 === mes;
+  });
+  const litrosFiltro = notasFiltradas.reduce((s, n) => s + Number(n.litros || 0), 0);
+  const valorFiltro = notasFiltradas.reduce((s, n) => s + Number(n.valor_total || 0), 0);
+  const mediaFiltro = litrosFiltro > 0 ? valorFiltro / litrosFiltro : null;
+
+  useEffect(() => { onMediaChange(mediaFiltro); }, [mediaFiltro]);
+
+  const anosDisponiveis = Array.from(new Set(lista.map((n) => new Date(n.data_nota + "T00:00:00").getFullYear())));
+  if (!anosDisponiveis.includes(ano)) anosDisponiveis.push(ano);
+  anosDisponiveis.sort((a, b) => b - a);
+
+  return (
+    <div>
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <select value={mes} onChange={(e) => onMesChange(Number(e.target.value))} style={campoInputStyle}>
+            {MESES_NOMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select value={ano} onChange={(e) => onAnoChange(Number(e.target.value))} style={campoInputStyle}>
+            {anosDisponiveis.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>Média de {MESES_NOMES[mes - 1]}/{ano}</div>
+        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24 }}>
+          {mediaFiltro !== null ? `R$ ${mediaFiltro.toFixed(2)} / L` : "Sem notas lançadas nesse período"}
+        </div>
+        <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
+          {notasFiltradas.length} nota(s) · {litrosFiltro.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} L · R$ {valorFiltro.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+        </div>
+      </Card>
+
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Registrar nova nota de compra</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+          <Campo label="Data da nota"><input style={campoInputStyle} type="date" value={form.data_nota} onChange={(e) => setForm((f) => ({ ...f, data_nota: e.target.value }))} /></Campo>
+          <Campo label="Litros comprados"><input style={campoInputStyle} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
+          <Campo label="Valor total (R$)"><input style={campoInputStyle} type="number" step="0.01" value={form.valor_total} onChange={(e) => setForm((f) => ({ ...f, valor_total: e.target.value }))} /></Campo>
+          <Campo label="Fornecedor"><input style={campoInputStyle} value={form.fornecedor} onChange={(e) => setForm((f) => ({ ...f, fornecedor: e.target.value }))} /></Campo>
+        </div>
+        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
+        <div style={{ marginTop: 14 }}>
+          <GoldButton onClick={registrar}>{saving ? <Loader2 size={15} className="ft-spin" /> : <Plus size={15} />} {saving ? "Registrando..." : "Registrar nota"}</GoldButton>
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 12 }}>Notas de {MESES_NOMES[mes - 1]}/{ano}</div>
+        {carregando ? <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Carregando...</div> : (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>Data</span><span>Litros</span><span>Valor total</span><span>R$/L</span><span>Fornecedor</span>
+            </div>
+            {notasFiltradas.map((n) => (
+              <div key={n.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                <span>{new Date(n.data_nota + "T00:00:00").toLocaleDateString("pt-BR")}</span>
+                <span>{Number(n.litros).toLocaleString("pt-BR")} L</span>
+                <span>R$ {Number(n.valor_total).toFixed(2)}</span>
+                <span>R$ {(Number(n.valor_total) / Number(n.litros)).toFixed(2)}</span>
+                <span>{n.fornecedor || "—"}</span>
+              </div>
+            ))}
+            {notasFiltradas.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhuma nota registrada em {MESES_NOMES[mes - 1]}/{ano}.</div>}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function Combustivel() {
   const { token, veiculos, refresh } = useFleet();
   const [aba, setAba] = useState("lista"); // 'lista' | 'dashboard'
   const [lista, setLista] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [carregandoMais, setCarregandoMais] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
   const [temMais, setTemMais] = useState(true);
   const [total, setTotal] = useState(null);
+  const [mediaMesDiesel, setMediaMesDiesel] = useState(null);
+  const [filtroMesDiesel, setFiltroMesDiesel] = useState(new Date().getMonth() + 1);
+  const [filtroAnoDiesel, setFiltroAnoDiesel] = useState(new Date().getFullYear());
   const [form, setForm] = useState({ veiculo_id: "", litros: "", valor_litro: "", posto: "", km_horimetro: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1381,7 +1426,7 @@ function Combustivel() {
       } />
 
       <div className="ft-no-print" style={{ display: "flex", gap: 6, marginBottom: 20, background: COLORS.surface, borderRadius: 10, padding: 4, width: "fit-content" }}>
-        {[{ id: "lista", label: "Registro & Lista" }, { id: "dashboard", label: "Dashboard" }].map((t) => (
+        {[{ id: "lista", label: "Registro & Lista" }, { id: "dashboard", label: "Dashboard" }, { id: "notas", label: "Notas de Compra" }].map((t) => (
           <button key={t.id} onClick={() => setAba(t.id)} style={{
             padding: "7px 16px", borderRadius: 7, border: "none", fontSize: 13, fontWeight: 600,
             cursor: "pointer", background: aba === t.id ? COLORS.gold : "transparent",
@@ -1390,7 +1435,15 @@ function Combustivel() {
         ))}
       </div>
 
-      {aba === "dashboard" ? <DashboardCombustivel /> : (
+      {aba === "dashboard" ? <DashboardCombustivel /> : aba === "notas" ? (
+        <NotasCompraDiesel
+          mes={filtroMesDiesel}
+          ano={filtroAnoDiesel}
+          onMesChange={setFiltroMesDiesel}
+          onAnoChange={setFiltroAnoDiesel}
+          onMediaChange={setMediaMesDiesel}
+        />
+      ) : (
         <>
           <Card style={{ marginBottom: 20 }} className="ft-no-print">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
@@ -1411,20 +1464,54 @@ function Combustivel() {
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
                   Mostrando {lista.length}{total !== null ? ` de ${total}` : ""} abastecimentos
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
-                  <span>Veículo</span><span>Litros</span><span>R$/L</span><span>Total</span><span>Posto</span><span>Data</span>
-                </div>
-                {lista.map((a) => (
-                  <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
-                    <span>{a.veiculos?.placa || a.veiculos?.identificador_interno || "—"}</span>
-                    <span>{a.litros} L</span>
-                    <span>R$ {Number(a.valor_litro).toFixed(2)}</span>
-                    <span>R$ {Number(a.valor_total).toFixed(2)}</span>
-                    <span>{a.posto || "—"}</span>
-                    <span>{a.registrado_em ? new Date(a.registrado_em).toLocaleDateString("pt-BR") : "—"}</span>
-                  </div>
-                ))}
+                   <div style={{ display: "grid", gridTemplateColumns: "0.9fr 1fr 1fr 1fr 1fr 1fr 0.8fr", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, paddingBottom: 10, borderBottom: `1px solid ${COLORS.border}` }}>
+  <span>Veículo</span><span>Litros</span><span>R$/L</span><span>Total</span><span>Posto</span><span>Data</span><span>Origem</span>
+</div>
+{lista.map((a) => {
+  const isEvoluma = !!a.fonte_integracao;
+  const expanded = expandedId === a.id;
+  const placa = a.veiculos?.placa || a.veiculos?.identificador_interno || a.placa_evoluma || "—";
+  return (
+    <div key={a.id}>
+      <div
+        onClick={() => setExpandedId(expanded ? null : a.id)}
+        style={{ display: "grid", gridTemplateColumns: "0.9fr 1fr 1fr 1fr 1fr 1fr 0.8fr", padding: "10px 0", borderBottom: expanded ? "none" : `1px solid ${COLORS.border}`, fontSize: 13, cursor: isEvoluma ? "pointer" : "default" }}
+      >
+        <span>{placa}</span>
+        <span>{a.litros} L</span>
+        {(() => {
+          const temValorReal = Number(a.valor_litro) > 0;
+          const estimadoLitro = !temValorReal && mediaMesDiesel ? mediaMesDiesel : null;
+          const estimadoTotal = !temValorReal && mediaMesDiesel ? a.litros * mediaMesDiesel : null;
+          return (
+            <>
+              <span>{temValorReal ? `R$ ${Number(a.valor_litro).toFixed(2)}` : estimadoLitro ? `R$ ${estimadoLitro.toFixed(2)} *` : "R$ 0.00"}</span>
+              <span>{temValorReal ? `R$ ${Number(a.valor_total).toFixed(2)}` : estimadoTotal !== null ? `R$ ${estimadoTotal.toFixed(2)} *` : "R$ 0.00"}</span>
+            </>
+          );
+        })()}
+        <span>{a.posto || "—"}</span>
+        <span>{a.registrado_em ? new Date(a.registrado_em).toLocaleDateString("pt-BR") : "—"}</span>
+        <span style={{
+          fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 999, textAlign: "center",
+          color: isEvoluma ? "#1B7A3D" : COLORS.textMuted,
+          background: isEvoluma ? "#1B7A3D22" : `${COLORS.border}55`,
+        }}>
+          {isEvoluma ? "Evoluma" : "Manual"}
+        </span>
+      </div>
+      {expanded && isEvoluma && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, padding: "10px 0 14px", borderBottom: `1px solid ${COLORS.border}`, fontSize: 12.5, color: COLORS.textMuted }}>
+          <div><strong style={{ color: "#fff" }}>Operador:</strong> {a.operador_nome || "—"}</div>
+          <div><strong style={{ color: "#fff" }}>Combustível:</strong> {a.tipo_combustivel || "—"}</div>
+          <div><strong style={{ color: "#fff" }}>Data real:</strong> {a.data_abastecimento ? new Date(a.data_abastecimento).toLocaleString("pt-BR") : "—"}</div>
+        </div>
+      )}
+    </div>
+  );
+})}
                 {lista.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, padding: "10px 0" }}>Nenhum abastecimento registrado ainda.</div>}
+                {mediaMesDiesel && <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 10 }}>* valor estimado com base na média das notas de compra de diesel de {MESES_NOMES[filtroMesDiesel - 1]}/{filtroAnoDiesel} (R$ {mediaMesDiesel.toFixed(2)}/L) — mude o período na aba "Notas de Compra"</div>}
                 {temMais && (
                   <div className="ft-no-print" style={{ marginTop: 14, textAlign: "center" }}>
                     <button onClick={carregarMais} disabled={carregandoMais} style={{
