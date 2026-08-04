@@ -3,7 +3,7 @@ import {
   ClipboardCheck, Wrench, Siren, Fuel, CircleDot, Droplets,
   ClipboardList, LayoutDashboard, Sparkles, ChevronRight, Plus,
   MapPin, Clock, AlertTriangle, CheckCircle2, XCircle, Gauge,
-  Truck, Search, Bell, Settings, X, Link2, RefreshCw, LogOut, Loader2, UserPlus
+  Truck, Search, Bell, Settings, X, Link2, RefreshCw, LogOut, Loader2, UserPlus, Lock
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -1800,39 +1800,80 @@ function Login({ onLogin }) {
 
   return (
     <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: COLORS.bg, fontFamily: "'Inter', sans-serif",
+      minHeight: "100vh", display: "flex", background: COLORS.bg, fontFamily: "'Inter', sans-serif",
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
+        .ft-login-left { display: flex; }
+        .ft-login-card { width: 400px; }
+        @media (max-width: 860px) {
+          .ft-login-left { display: none !important; }
+          .ft-login-card { width: 100%; max-width: 380px; }
+        }
       `}</style>
-      <div style={{ width: 320, background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.gold, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Truck size={17} color="#0A0D11" />
+
+      <div className="ft-login-left" style={{
+        flex: 1, flexDirection: "column", justifyContent: "center", padding: "0 64px",
+        background: `radial-gradient(ellipse at 30% 40%, ${COLORS.gold}14 0%, transparent 60%)`,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 9, background: COLORS.gold, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Truck size={19} color="#0A0D11" />
           </div>
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: COLORS.textPrimary }}>FrotaTech</span>
+          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 21, color: COLORS.textPrimary }}>FrotaTech</span>
         </div>
+        <div style={{ fontSize: 11, letterSpacing: 2.5, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 20 }}>
+          Manutenção · Combustível · Controle
+        </div>
+        <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 52, lineHeight: 1.08, margin: 0, color: COLORS.textPrimary, maxWidth: 520 }}>
+          Cada checklist<br />
+          <span style={{ color: COLORS.gold }}>move sua frota</span><br />
+          pra frente.
+        </h1>
+        <p style={{ fontSize: 15, color: COLORS.textMuted, marginTop: 22, maxWidth: 400, lineHeight: 1.6 }}>
+          Manutenção, abastecimento e inspeções da sua operação em um único lugar — do pátio ao painel.
+        </p>
+      </div>
 
-        <label style={{ fontSize: 12, color: COLORS.textMuted }}>CPF</label>
-        <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00"
-          style={{ width: "100%", marginTop: 4, marginBottom: 14, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary }} />
+      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", width: "100%", maxWidth: 520 }}>
+        <div className="ft-login-card" style={{ background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 18, padding: 32 }}>
+          <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 10 }}>
+            FrotaTech
+          </div>
+          <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 26, margin: 0, color: COLORS.textPrimary }}>
+            Acesse sua operação
+          </h2>
+          <p style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 6, marginBottom: 26 }}>
+            Use os dados cadastrados pela sua empresa.
+          </p>
 
-        <label style={{ fontSize: 12, color: COLORS.textMuted }}>Data de nascimento</label>
-        <input value={nascimento} onChange={(e) => setNascimento(e.target.value)} type="date"
-          style={{ width: "100%", marginTop: 4, marginBottom: 18, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary }} />
+          <label style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: 600 }}>CPF</label>
+          <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00"
+            style={{ width: "100%", marginTop: 6, marginBottom: 16, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 12, color: COLORS.textPrimary, fontSize: 14 }} />
 
-        {error && <div style={{ color: COLORS.alert, fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          <label style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: 600 }}>Data de nascimento</label>
+          <input value={nascimento} onChange={(e) => setNascimento(e.target.value)} type="date"
+            style={{ width: "100%", marginTop: 6, marginBottom: 22, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 12, color: COLORS.textPrimary, fontSize: 14 }} />
 
-        <button type="button" onClick={entrar} disabled={loading} style={{
-          width: "100%", background: COLORS.gold, color: "#0A0D11", border: "none", borderRadius: 10,
-          padding: 12, fontWeight: 700, cursor: loading ? "wait" : "pointer",
-        }}>
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
+          {error && <div style={{ color: COLORS.alert, fontSize: 12.5, marginBottom: 16, lineHeight: 1.5 }}>{error}</div>}
 
-        <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 14, lineHeight: 1.5 }}>
-          Sua conta é criada pelo administrador no painel. Se ainda não tem acesso, procure seu gestor.
+          <button type="button" onClick={entrar} disabled={loading} style={{
+            width: "100%", background: COLORS.gold, color: "#0A0D11", border: "none", borderRadius: 10,
+            padding: 13, fontWeight: 700, fontSize: 14.5, cursor: loading ? "wait" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}>
+            {loading ? <Loader2 size={16} className="ft-spin" /> : null}
+            {loading ? "Entrando..." : "Entrar no aplicativo"}
+            {!loading && <ChevronRight size={16} />}
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted, marginTop: 18 }}>
+            <Lock size={12} /> Acesso protegido e dados centralizados
+          </div>
+
+          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 14, lineHeight: 1.5, textAlign: "center" }}>
+            Sua conta é criada pelo administrador no painel. Se ainda não tem acesso, procure seu gestor.
+          </div>
         </div>
       </div>
     </div>
