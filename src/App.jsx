@@ -1818,6 +1818,70 @@ const RECURSOS = [
   { icon: CircleDot, titulo: "Gestão de pneus", desc: "Rastreie desgaste, recapagem e descarte de cada pneu da frota." },
 ];
 
+function IlustracaoEscavadeira({ color = COLORS.gold }) {
+  return (
+    <svg viewBox="0 0 280 170" width="100%" height="140" fill="none">
+      <ellipse cx="95" cy="140" rx="80" ry="10" fill={color} opacity="0.06" />
+      <rect x="30" y="122" width="150" height="16" rx="8" stroke={color} strokeWidth="2" />
+      <circle cx="52" cy="130" r="9" stroke={color} strokeWidth="2" />
+      <circle cx="158" cy="130" r="9" stroke={color} strokeWidth="2" />
+      <circle cx="105" cy="130" r="9" stroke={color} strokeWidth="2" />
+      <path d="M50 122 L50 82 Q50 72 60 72 L118 72 Q128 72 128 82 L128 122 Z" stroke={color} strokeWidth="2" />
+      <rect x="62" y="82" width="34" height="24" rx="3" stroke={color} strokeWidth="1.5" opacity="0.6" />
+      <path d="M110 88 L165 55" stroke={color} strokeWidth="4" strokeLinecap="round" />
+      <path d="M165 55 L200 78" stroke={color} strokeWidth="4" strokeLinecap="round" />
+      <path d="M200 78 L188 100 L212 108 L222 82 Z" stroke={color} strokeWidth="3" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IlustracaoCaminhao({ color = COLORS.gold }) {
+  return (
+    <svg viewBox="0 0 280 170" width="100%" height="140" fill="none">
+      <ellipse cx="140" cy="140" rx="110" ry="10" fill={color} opacity="0.06" />
+      <path d="M30 128 L30 75 Q30 65 40 65 L78 65 Q88 65 88 75 L88 128 Z" stroke={color} strokeWidth="2" />
+      <rect x="42" y="76" width="30" height="24" rx="3" stroke={color} strokeWidth="1.5" opacity="0.6" />
+      <path d="M88 128 L88 100 L215 68 L235 100 L235 128 Z" stroke={color} strokeWidth="2" />
+      <path d="M215 68 L215 128" stroke={color} strokeWidth="1.5" opacity="0.5" />
+      <path d="M88 100 L165 100" stroke={color} strokeWidth="1.5" opacity="0.4" strokeDasharray="3 3" />
+      <rect x="30" y="128" width="205" height="10" rx="4" stroke={color} strokeWidth="2" />
+      <circle cx="58" cy="145" r="12" stroke={color} strokeWidth="2.5" />
+      <circle cx="185" cy="145" r="12" stroke={color} strokeWidth="2.5" />
+      <circle cx="215" cy="145" r="12" stroke={color} strokeWidth="2.5" />
+    </svg>
+  );
+}
+
+function IlustracaoMotoniveladora({ color = COLORS.gold }) {
+  return (
+    <svg viewBox="0 0 280 170" width="100%" height="140" fill="none">
+      <ellipse cx="140" cy="140" rx="110" ry="10" fill={color} opacity="0.06" />
+      <path d="M35 118 L245 118" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <path d="M140 118 L140 70 Q140 62 148 62 L192 62 Q202 62 202 72 L202 118" stroke={color} strokeWidth="2" />
+      <rect x="152" y="72" width="34" height="24" rx="3" stroke={color} strokeWidth="1.5" opacity="0.6" />
+      <path d="M35 118 L55 118 L70 138 L28 138 Z" stroke={color} strokeWidth="2.5" strokeLinejoin="round" />
+      <circle cx="112" cy="140" r="12" stroke={color} strokeWidth="2.5" />
+      <circle cx="215" cy="140" r="12" stroke={color} strokeWidth="2.5" />
+      <path d="M55 118 L55 100" stroke={color} strokeWidth="2" />
+    </svg>
+  );
+}
+
+const EQUIPAMENTOS = [
+  { Ilustracao: IlustracaoEscavadeira, nome: "Escavadeiras", desc: "Controle de horímetro, lubrificação e OS por equipamento." },
+  { Ilustracao: IlustracaoCaminhao, nome: "Caminhões", desc: "Checklist de saída, abastecimento e manutenção da frota rodante." },
+  { Ilustracao: IlustracaoMotoniveladora, nome: "Motoniveladoras", desc: "Inspeção periódica e histórico completo de intervenções." },
+];
+
+const DICAS_MANUTENCAO = [
+  { titulo: "Óleo em dia", desc: "Verifique o nível de óleo do motor diariamente, antes de ligar o equipamento." },
+  { titulo: "Pneus calibrados", desc: "Pneus mal calibrados aumentam o consumo de combustível e o desgaste da frota." },
+  { titulo: "Filtros no prazo", desc: "Troque filtros de ar e combustível conforme o intervalo do manual, não pelo aspecto visual." },
+  { titulo: "Pontos de graxa", desc: "Lubrifique articulações e pinos regularmente — isso evita boa parte das quebras evitáveis." },
+  { titulo: "Checklist sempre", desc: "Nenhum veículo deve sair sem o checklist de início de turno preenchido." },
+  { titulo: "Corretivas registradas", desc: "Toda manutenção corretiva registrada vira dado — e dado vira decisão melhor no próximo orçamento." },
+];
+
 function LandingPage({ onEntrar }) {
   return (
     <div style={{ background: COLORS.bg, color: COLORS.textPrimary, fontFamily: "'Inter', sans-serif", minHeight: "100vh" }}>
@@ -1878,6 +1942,35 @@ function LandingPage({ onEntrar }) {
               <r.icon size={22} color={COLORS.gold} />
               <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, marginTop: 14, marginBottom: 6 }}>{r.titulo}</div>
               <div style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.5 }}>{r.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ maxWidth: 1080, margin: "0 auto", padding: "0 24px 90px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 14, textAlign: "center" }}>
+          Feito pra sua operação
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px,1fr))", gap: 16 }}>
+          {EQUIPAMENTOS.map((eq) => (
+            <div key={eq.nome} style={{ background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18 }}>
+              <eq.Ilustracao />
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15, marginTop: 10, marginBottom: 6 }}>{eq.nome}</div>
+              <div style={{ fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.5 }}>{eq.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ maxWidth: 1080, margin: "0 auto", padding: "0 24px 90px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 14, textAlign: "center" }}>
+          Dicas de manutenção e operação
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 14 }}>
+          {DICAS_MANUTENCAO.map((d) => (
+            <div key={d.titulo} style={{ background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 18 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: COLORS.gold, marginBottom: 6 }}>{d.titulo}</div>
+              <div style={{ fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.5 }}>{d.desc}</div>
             </div>
           ))}
         </div>
