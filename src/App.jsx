@@ -139,7 +139,7 @@ async function cadastrarFuncionarioSeguro(payload, token) {
    signature: "Pulso da Frota" — animated route/heartbeat line
    ============================================================ */
 
-const COLORS = {
+const COLORS_DARK = {
   bg: "#0A0D11",
   surface: "#12161C",
   raised: "#1B212A",
@@ -151,6 +151,39 @@ const COLORS = {
   textPrimary: "#EDEFF2",
   textMuted: "#8A94A6",
 };
+
+const COLORS_LIGHT = {
+  bg: "#F7F6F2",
+  surface: "#FFFFFF",
+  raised: "#FFFFFF",
+  border: "#E5E2D9",
+  gold: "#D9A400",
+  goldDim: "#A67C00",
+  alert: "#D92D3D",
+  ok: "#1E9E56",
+  textPrimary: "#1A1D1F",
+  textMuted: "#6B7075",
+};
+
+// Objeto mutável: começa escuro (padrão desktop). AppShell troca os valores
+// em tempo real conforme o tamanho da tela — mobile fica claro, desktop escuro.
+let COLORS = { ...COLORS_DARK };
+
+// Detecta o tamanho da tela e aplica o tema correspondente antes da renderização
+// dos componentes filhos (evita "flash" de tema errado no primeiro load).
+function useResponsiveTheme() {
+  const [isLight, setIsLight] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 780px)").matches
+  );
+  Object.assign(COLORS, isLight ? COLORS_LIGHT : COLORS_DARK);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 780px)");
+    const handler = (e) => setIsLight(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isLight;
+}
 
 const NAV = [
   { id: "dashboard", label: "Painel", icon: LayoutDashboard },
@@ -741,7 +774,7 @@ function Campo({ label, children }) {
     </div>
   );
 }
-const campoInputStyle = { width: "100%", marginTop: 4, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary };
+function campoInputStyle() { return { width: "100%", marginTop: 4, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, color: COLORS.textPrimary }; }
 
 function CAMPOS_ABASTECIMENTO() {
   return [
@@ -1011,7 +1044,7 @@ function ImportarCSVCombustivel({ onImportado }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 12, marginBottom: 10 }}>
             {campos.map((c) => (
               <Campo key={c.key} label={c.label + (c.obrigatorio ? " *" : "")}>
-                <select value={mapa[c.key] ?? ""} onChange={(e) => setMapa((m) => ({ ...m, [c.key]: e.target.value === "" ? "" : Number(e.target.value) }))} style={campoInputStyle}>
+                <select value={mapa[c.key] ?? ""} onChange={(e) => setMapa((m) => ({ ...m, [c.key]: e.target.value === "" ? "" : Number(e.target.value) }))} style={campoInputStyle()}>
                   <option value="">— não usar —</option>
                   {opcoesColuna.map((o) => <option key={o.indice} value={o.indice}>{o.label}</option>)}
                 </select>
@@ -1290,10 +1323,10 @@ function NotasCompraDiesel({ mes, ano, onMesChange, onAnoChange, onMediaChange }
     <div>
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-          <select value={mes} onChange={(e) => onMesChange(Number(e.target.value))} style={campoInputStyle}>
+          <select value={mes} onChange={(e) => onMesChange(Number(e.target.value))} style={campoInputStyle()}>
             {MESES_NOMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
-          <select value={ano} onChange={(e) => onAnoChange(Number(e.target.value))} style={campoInputStyle}>
+          <select value={ano} onChange={(e) => onAnoChange(Number(e.target.value))} style={campoInputStyle()}>
             {anosDisponiveis.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
@@ -1309,10 +1342,10 @@ function NotasCompraDiesel({ mes, ano, onMesChange, onAnoChange, onMediaChange }
       <Card style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Registrar nova nota de compra</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
-          <Campo label="Data da nota"><input style={campoInputStyle} type="date" value={form.data_nota} onChange={(e) => setForm((f) => ({ ...f, data_nota: e.target.value }))} /></Campo>
-          <Campo label="Litros comprados"><input style={campoInputStyle} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
-          <Campo label="Valor total (R$)"><input style={campoInputStyle} type="number" step="0.01" value={form.valor_total} onChange={(e) => setForm((f) => ({ ...f, valor_total: e.target.value }))} /></Campo>
-          <Campo label="Fornecedor"><input style={campoInputStyle} value={form.fornecedor} onChange={(e) => setForm((f) => ({ ...f, fornecedor: e.target.value }))} /></Campo>
+          <Campo label="Data da nota"><input style={campoInputStyle()} type="date" value={form.data_nota} onChange={(e) => setForm((f) => ({ ...f, data_nota: e.target.value }))} /></Campo>
+          <Campo label="Litros comprados"><input style={campoInputStyle()} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
+          <Campo label="Valor total (R$)"><input style={campoInputStyle()} type="number" step="0.01" value={form.valor_total} onChange={(e) => setForm((f) => ({ ...f, valor_total: e.target.value }))} /></Campo>
+          <Campo label="Fornecedor"><input style={campoInputStyle()} value={form.fornecedor} onChange={(e) => setForm((f) => ({ ...f, fornecedor: e.target.value }))} /></Campo>
         </div>
         {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
         <div style={{ marginTop: 14 }}>
@@ -1448,10 +1481,10 @@ function Combustivel() {
           <Card style={{ marginBottom: 20 }} className="ft-no-print">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
               <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
-              <Campo label="Litros"><input style={campoInputStyle} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
-              <Campo label="R$ por litro"><input style={campoInputStyle} type="number" step="0.01" value={form.valor_litro} onChange={(e) => setForm((f) => ({ ...f, valor_litro: e.target.value }))} /></Campo>
-              <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
-              <Campo label="Posto"><input style={campoInputStyle} value={form.posto} onChange={(e) => setForm((f) => ({ ...f, posto: e.target.value }))} /></Campo>
+              <Campo label="Litros"><input style={campoInputStyle()} type="number" value={form.litros} onChange={(e) => setForm((f) => ({ ...f, litros: e.target.value }))} /></Campo>
+              <Campo label="R$ por litro"><input style={campoInputStyle()} type="number" step="0.01" value={form.valor_litro} onChange={(e) => setForm((f) => ({ ...f, valor_litro: e.target.value }))} /></Campo>
+              <Campo label="Km/Horímetro"><input style={campoInputStyle()} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
+              <Campo label="Posto"><input style={campoInputStyle()} value={form.posto} onChange={(e) => setForm((f) => ({ ...f, posto: e.target.value }))} /></Campo>
             </div>
             {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
             <div style={{ marginTop: 14 }}>
@@ -1566,10 +1599,10 @@ function Pneus() {
       <SectionHeader eyebrow="Controle" title="Pneus" />
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
-          <Campo label="Número de fogo"><input style={campoInputStyle} value={form.numero_fogo} onChange={(e) => setForm((f) => ({ ...f, numero_fogo: e.target.value }))} /></Campo>
-          <Campo label="Marca"><input style={campoInputStyle} value={form.marca} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} /></Campo>
-          <Campo label="Modelo"><input style={campoInputStyle} value={form.modelo} onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))} /></Campo>
-          <Campo label="Medida"><input style={campoInputStyle} value={form.medida} onChange={(e) => setForm((f) => ({ ...f, medida: e.target.value }))} /></Campo>
+          <Campo label="Número de fogo"><input style={campoInputStyle()} value={form.numero_fogo} onChange={(e) => setForm((f) => ({ ...f, numero_fogo: e.target.value }))} /></Campo>
+          <Campo label="Marca"><input style={campoInputStyle()} value={form.marca} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} /></Campo>
+          <Campo label="Modelo"><input style={campoInputStyle()} value={form.modelo} onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))} /></Campo>
+          <Campo label="Medida"><input style={campoInputStyle()} value={form.medida} onChange={(e) => setForm((f) => ({ ...f, medida: e.target.value }))} /></Campo>
         </div>
         {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
         <div style={{ marginTop: 14 }}>
@@ -1637,8 +1670,8 @@ function Lubrificacao() {
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
           <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
-          <Campo label="Produto utilizado"><input style={campoInputStyle} value={form.produto_utilizado} onChange={(e) => setForm((f) => ({ ...f, produto_utilizado: e.target.value }))} /></Campo>
-          <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
+          <Campo label="Produto utilizado"><input style={campoInputStyle()} value={form.produto_utilizado} onChange={(e) => setForm((f) => ({ ...f, produto_utilizado: e.target.value }))} /></Campo>
+          <Campo label="Km/Horímetro"><input style={campoInputStyle()} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
         </div>
         {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
         <div style={{ marginTop: 14 }}>
@@ -1706,9 +1739,9 @@ function Inspecoes() {
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
           <Campo label="Veículo"><SeletorVeiculo value={form.veiculo_id} onChange={(e) => setForm((f) => ({ ...f, veiculo_id: e.target.value }))} /></Campo>
-          <Campo label="Tipo de inspeção"><input style={campoInputStyle} placeholder="ex: quinzenal_maquinas_pesadas" value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))} /></Campo>
-          <Campo label="Nota geral (0-10)"><input style={campoInputStyle} type="number" step="0.1" value={form.nota_geral} onChange={(e) => setForm((f) => ({ ...f, nota_geral: e.target.value }))} /></Campo>
-          <Campo label="Km/Horímetro"><input style={campoInputStyle} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
+          <Campo label="Tipo de inspeção"><input style={campoInputStyle()} placeholder="ex: quinzenal_maquinas_pesadas" value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))} /></Campo>
+          <Campo label="Nota geral (0-10)"><input style={campoInputStyle()} type="number" step="0.1" value={form.nota_geral} onChange={(e) => setForm((f) => ({ ...f, nota_geral: e.target.value }))} /></Campo>
+          <Campo label="Km/Horímetro"><input style={campoInputStyle()} type="number" value={form.km_horimetro} onChange={(e) => setForm((f) => ({ ...f, km_horimetro: e.target.value }))} /></Campo>
         </div>
         {error && <div style={{ color: COLORS.alert, fontSize: 12, marginTop: 10 }}>{error}</div>}
         <div style={{ marginTop: 14 }}>
@@ -1778,7 +1811,86 @@ function IaIntegracoes() {
   );
 }
 
-function Login({ onLogin }) {
+const RECURSOS = [
+  { icon: ClipboardCheck, titulo: "Checklist eletrônico", desc: "Inspeção pelo celular, com foto e assinatura. Funciona offline e sincroniza depois." },
+  { icon: Wrench, titulo: "Gestão de manutenção", desc: "OS automática em não conformidades, custo por veículo e histórico completo." },
+  { icon: Fuel, titulo: "Controle de combustível", desc: "Abastecimentos, notas de compra e média de custo por litro, tudo num só lugar." },
+  { icon: CircleDot, titulo: "Gestão de pneus", desc: "Rastreie desgaste, recapagem e descarte de cada pneu da frota." },
+];
+
+function LandingPage({ onEntrar }) {
+  return (
+    <div style={{ background: COLORS.bg, color: COLORS.textPrimary, fontFamily: "'Inter', sans-serif", minHeight: "100vh" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap');
+        .ft-land-nav-links { display: flex; }
+        @media (max-width: 720px) { .ft-land-nav-links { display: none; } }
+      `}</style>
+
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px", borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.gold, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Truck size={17} color="#0A0D11" />
+          </div>
+          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>FrotaTech</span>
+        </div>
+        <div className="ft-land-nav-links" style={{ gap: 28, fontSize: 13.5, color: COLORS.textMuted }}>
+          <span>Soluções</span>
+          <span>Sobre</span>
+        </div>
+        <button onClick={onEntrar} style={{
+          background: COLORS.gold, color: "#0A0D11", border: "none", borderRadius: 9,
+          padding: "9px 18px", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          Entrar <ChevronRight size={14} />
+        </button>
+      </header>
+
+      <section style={{ maxWidth: 780, margin: "0 auto", padding: "88px 24px 64px", textAlign: "center" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 11.5, letterSpacing: 1, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", border: `1px solid ${COLORS.gold}44`, borderRadius: 999, padding: "6px 14px", marginBottom: 26 }}>
+          <Sparkles size={12} /> Gestão de frota, do pátio ao painel
+        </div>
+        <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 52, lineHeight: 1.08, margin: 0, textTransform: "uppercase" }}>
+          Inspeção que<br /><span style={{ color: COLORS.gold }}>move sua frota.</span>
+        </h1>
+        <p style={{ fontSize: 16, color: COLORS.textMuted, marginTop: 22, lineHeight: 1.6, maxWidth: 560, marginLeft: "auto", marginRight: "auto" }}>
+          Checklist, manutenção, combustível e pneus em um único sistema. Menos papel, menos surpresa, mais controle sobre cada veículo da operação.
+        </p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 34, flexWrap: "wrap" }}>
+          <button onClick={onEntrar} style={{
+            background: COLORS.gold, color: "#0A0D11", border: "none", borderRadius: 10,
+            padding: "13px 24px", fontWeight: 700, fontSize: 14.5, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            Entrar no aplicativo <ChevronRight size={16} />
+          </button>
+        </div>
+      </section>
+
+      <section style={{ maxWidth: 1080, margin: "0 auto", padding: "20px 24px 90px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 14, textAlign: "center" }}>
+          Tudo que acontece no seu pátio
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px,1fr))", gap: 16 }}>
+          {RECURSOS.map((r) => (
+            <div key={r.titulo} style={{ background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 22 }}>
+              <r.icon size={22} color={COLORS.gold} />
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, marginTop: 14, marginBottom: 6 }}>{r.titulo}</div>
+              <div style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.5 }}>{r.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <footer style={{ borderTop: `1px solid ${COLORS.border}`, padding: "24px 32px", textAlign: "center", fontSize: 12, color: COLORS.textMuted }}>
+        © {new Date().getFullYear()} FrotaTech · Gestão de frota
+      </footer>
+    </div>
+  );
+}
+
+function Login({ onLogin, onVoltar }) {
   const [cpf, setCpf] = useState("");
   const [nascimento, setNascimento] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1800,46 +1912,31 @@ function Login({ onLogin }) {
 
   return (
     <div style={{
-      minHeight: "100vh", display: "flex", background: COLORS.bg, fontFamily: "'Inter', sans-serif",
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: COLORS.bg, fontFamily: "'Inter', sans-serif", padding: 24,
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
-        .ft-login-left { display: flex; }
-        .ft-login-card { width: 400px; }
-        @media (max-width: 860px) {
-          .ft-login-left { display: none !important; }
-          .ft-login-card { width: 100%; max-width: 380px; }
-        }
       `}</style>
 
-      <div className="ft-login-left" style={{
-        flex: 1, flexDirection: "column", justifyContent: "center", padding: "0 64px",
-        background: `radial-gradient(ellipse at 30% 40%, ${COLORS.gold}14 0%, transparent 60%)`,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 9, background: COLORS.gold, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Truck size={19} color="#0A0D11" />
+      <div style={{ width: "100%", maxWidth: 400 }}>
+        {onVoltar && (
+          <button onClick={onVoltar} style={{
+            background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 18, padding: 0,
+          }}>
+            ← Voltar
+          </button>
+        )}
+        <div style={{ background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 18, padding: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.gold, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Truck size={17} color="#0A0D11" />
+            </div>
+            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>FrotaTech</span>
           </div>
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 21, color: COLORS.textPrimary }}>FrotaTech</span>
-        </div>
-        <div style={{ fontSize: 11, letterSpacing: 2.5, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 20 }}>
-          Manutenção · Combustível · Controle
-        </div>
-        <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 56, lineHeight: 1.05, margin: 0, color: COLORS.textPrimary, maxWidth: 560, textTransform: "uppercase" }}>
-          Inspeção que<br />
-          <span style={{ color: COLORS.gold }}>move sua frota.</span>
-        </h1>
-        <p style={{ fontSize: 15, color: COLORS.textMuted, marginTop: 22, maxWidth: 400, lineHeight: 1.6 }}>
-          Manutenção, abastecimento e inspeções da sua operação em um único lugar — do pátio ao painel.
-        </p>
-      </div>
 
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", width: "100%", maxWidth: 520 }}>
-        <div className="ft-login-card" style={{ background: COLORS.raised, border: `1px solid ${COLORS.border}`, borderRadius: 18, padding: 32 }}>
-          <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 10 }}>
-            FrotaTech
-          </div>
-          <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 26, margin: 0, color: COLORS.textPrimary }}>
+          <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, margin: 0, color: COLORS.textPrimary }}>
             Acesse sua operação
           </h2>
           <p style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 6, marginBottom: 26 }}>
@@ -2026,6 +2123,7 @@ function CadastroFuncionario() {
 }
 
 function TrocaSenhaObrigatoria({ onTrocada }) {
+  useResponsiveTheme();
   const { token, user } = useFleet();
   const [senha, setSenha] = useState("");
   const [confirmacao, setConfirmacao] = useState("");
@@ -2108,6 +2206,7 @@ const SCREENS = {
 };
 
 function AppShell() {
+  useResponsiveTheme();
   const [active, setActive] = useState("dashboard");
   const fleet = useFleet();
   const Screen = SCREENS[active];
@@ -2216,6 +2315,7 @@ function AppShell() {
 
 export default function FrotaTechApp() {
   const [session, setSession] = useState(null); // { access_token, user }
+  const [verLogin, setVerLogin] = useState(false);
   const [profile, setProfile] = useState(null);
   const [veiculos, setVeiculos] = useState(VEICULOS_SEED);
   const [osList, setOsList] = useState([]);
@@ -2255,9 +2355,14 @@ export default function FrotaTechApp() {
     setVeiculos(VEICULOS_SEED);
     setOsList([]);
     setSosList([]);
+    Object.assign(COLORS, COLORS_DARK);
   }
 
-  if (!session) return <Login onLogin={handleLogin} />;
+  if (!session) {
+    return verLogin
+      ? <Login onLogin={handleLogin} onVoltar={() => setVerLogin(false)} />
+      : <LandingPage onEntrar={() => setVerLogin(true)} />;
+  }
 
   const isAdmin = profile?.role === "admin" || profile?.role === "gestor";
 
