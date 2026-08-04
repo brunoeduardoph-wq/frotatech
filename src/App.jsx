@@ -1825,10 +1825,9 @@ function Login({ onLogin }) {
         <div style={{ fontSize: 11, letterSpacing: 2.5, color: COLORS.gold, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 20 }}>
           Manutenção · Combustível · Controle
         </div>
-        <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 52, lineHeight: 1.08, margin: 0, color: COLORS.textPrimary, maxWidth: 520 }}>
-          Cada checklist<br />
-          <span style={{ color: COLORS.gold }}>move sua frota</span><br />
-          pra frente.
+        <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 56, lineHeight: 1.05, margin: 0, color: COLORS.textPrimary, maxWidth: 560, textTransform: "uppercase" }}>
+          Inspeção que<br />
+          <span style={{ color: COLORS.gold }}>move sua frota.</span>
         </h1>
         <p style={{ fontSize: 15, color: COLORS.textMuted, marginTop: 22, maxWidth: 400, lineHeight: 1.6 }}>
           Manutenção, abastecimento e inspeções da sua operação em um único lugar — do pátio ao painel.
